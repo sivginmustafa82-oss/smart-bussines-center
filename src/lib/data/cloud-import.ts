@@ -127,7 +127,7 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
   const costs = snapshot.products
     .filter((product) => product.unitCost !== null)
     .map((product) => ({
-      id: cloudId(idMap, "cost", product.id),
+      id: cloudId(idMap, "cost", product.id + ":" + product.updatedAt),
       organization_id: orgId,
       variant_id: cloudId(idMap, "variant", product.id),
       unit_cost: product.unitCost!,
@@ -196,8 +196,11 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
   await writeBatches("Mağaza", stores, (batch) => supabase.from("stores").upsert(batch, { onConflict: "id" }));
   await writeBatches("Ürün", products, (batch) => supabase.from("products").upsert(batch, { onConflict: "id" }));
   await writeBatches("Ürün varyantı", variants, (batch) => supabase.from("product_variants").upsert(batch, { onConflict: "id" }));
-  await writeBatches("Ürün maliyeti", costs, (batch) => supabase.from("product_costs").upsert(batch, { onConflict: "id" }));
-  await writeBatches("Sipariş kaydı", orders, (batch) => supabase.from("order_records").upsert(batch, { onConflict: "id" }));
+  await writeBatches("Ürün maliyeti", costs, (batch) => supabase.from("product_costs").upsert(batch, { onConflict: "id", ignoreDuplicates: true }));
+  const manualOrders = orders.filter((row) => row.data_source === "manual");
+  const importedOrders = orders.filter((row) => row.data_source === "imported");
+  await writeBatches("Manuel sipariş kaydı", manualOrders, (batch) => supabase.from("order_records").upsert(batch, { onConflict: "id" }));
+  await writeBatches("İçe aktarılan sipariş kaydı", importedOrders, (batch) => supabase.from("order_records").upsert(batch, { onConflict: "id", ignoreDuplicates: true }));
   await writeBatches("Gider", expenses, (batch) => supabase.from("expenses").upsert(batch, { onConflict: "id" }));
   await writeBatches("Mutabakat", reconciliations, (batch) => supabase.from("reconciliations").upsert(batch, { onConflict: "id" }));
 
