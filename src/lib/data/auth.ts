@@ -131,6 +131,8 @@ export async function signUp(input: {
     email,
     password: input.password,
     options: {
+      // Supabase must allow the Vercel preview and production origins in Auth > URL Configuration.
+      emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/giris` : undefined,
       data: {
         full_name: input.name.trim(),
         company_name: input.companyName.trim(),
