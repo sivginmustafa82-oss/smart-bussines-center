@@ -213,12 +213,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     ...db,
     stores: mergeById(db.stores.filter((row) => row.tenantId !== session.tenantId), stores)
       .concat(db.stores.filter((row) => row.tenantId === session.tenantId && !stores.some((incoming) => incoming.id === row.id))),
-    products: mergeProductsByUpdatedAt(
-      db.products.filter((row) => row.tenantId !== session.tenantId),
-      products,
-    ).concat(
-      db.products.filter((row) => row.tenantId === session.tenantId && !products.some((incoming) => incoming.id === row.id)),
-    ),
+    products: mergeProductsByUpdatedAt(db.products, products),
     orders: mergeById(db.orders.filter((row) => row.tenantId !== session.tenantId), orders)
       .concat(db.orders.filter((row) => row.tenantId === session.tenantId && !orders.some((incoming) => incoming.id === row.id))),
     expenses: mergeById(db.expenses.filter((row) => row.tenantId !== session.tenantId), expenses)
