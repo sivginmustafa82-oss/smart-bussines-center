@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import {
   CheckCircle2,
   CircleDashed,
@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Sparkles,
   Trash2,
+  Upload,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDelete } from "@/components/app/ConfirmDelete";
 import { Field, PageHeader, Panel } from "@/components/app/ui-bits";
 import { useWorkspace } from "@/lib/data/hooks";
-import { importLocalWorkspaceToSupabase, type CloudImportResult } from "@/lib/data/cloud-import";
+import { importLocalWorkspaceToSupabase, type CloudImportResult } from "@/lib/data/cloud-import";\nimport { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
 
 export const Route = createFileRoute("/_panel/ayarlar")({
@@ -57,6 +58,8 @@ function Settings() {
   const ws = useWorkspace();
   const [errors, setErrors] = useState<Partial<Record<"name" | "companyName", string>>>({});
   const [isImporting, setIsImporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const backupInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<CloudImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -100,6 +103,25 @@ function Settings() {
     if (ws.user) renameUser(ws.user.id, parsed.data.name);
     renameTenant(ws.tenantId, parsed.data.companyName);
     toast.success("Bu tarayıcıdaki profil bilgileri güncellendi");
+  }
+
+  async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsRestoring(true);
+    setImportError(null);
+    try {
+      const result = await importTenantBackupFile(file);
+      setImportResult(null);
+      toast.success(`Eski yedek yüklendi: ${result.stores} mağaza, ${result.products} ürün, ${result.orders} sipariş`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Yedek yüklenemedi.";
+      setImportError(message);
+      toast.error("JSON yedeği yüklenemedi");
+    } finally {
+      setIsRestoring(false);
+      event.target.value = "";
+    }
   }
 
   async function importToCloud() {
@@ -192,7 +214,19 @@ function Settings() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button onClick={() => void importToCloud()} disabled={isImporting || totalLocal === 0}>
+            <input
+              ref={backupInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => void restoreBackup(event)}
+              aria-label="Eski uygulamadan alınmış JSON yedeği seç"
+            />
+            <Button variant="outline" onClick={() => backupInputRef.current?.click()} disabled={isRestoring || isImporting}>
+              {isRestoring ? <Loader2 className="animate-spin" /> : <Upload />}
+              {isRestoring ? "Yedek okunuyor…" : "Eski uygulama JSON yedeğini yükle"}
+            </Button>
+            <Button onClick={() => void importToCloud()} disabled={isImporting || isRestoring || totalLocal === 0}>
               {isImporting ? <Loader2 className="animate-spin" /> : <CloudUpload />}
               {isImporting ? "Buluta aktarılıyor…" : "Yerel verileri buluta aktar"}
             </Button>
@@ -220,6 +254,9 @@ function Settings() {
           )}
 
           <p className="mt-4 text-xs text-muted-foreground">
+            Eski Lovable adresindeki kaydı taşımak için önce eski uygulamada Ayarlar → Verileri indir (JSON) ile yedek alın;
+            sonra bu ekranda “Eski uygulama JSON yedeğini yükle” düğmesini kullanın. Yükleme, kayıtları mevcut çalışma alanınıza
+            ekler ve mağaza/ürün bağlantılarını korur. Ardından “Yerel verileri buluta aktar” düğmesine basın.
             Aktarım sırasında kaynak kayıtlar silinmez. Aktarım yarıda kesilirse aynı düğmeye tekrar basılabilir;
             aynı kayıt kimlikleri kullanıldığı için yeniden deneme çoğaltma yapmaz. Aktarım yalnızca bu tarayıcıda
             bulunan mevcut kayıtları kopyalar; bundan sonraki canlı veri eşitlemesi ayrı bir geliştirme adımıdır.
