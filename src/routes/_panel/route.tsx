@@ -7,7 +7,7 @@ import { FiltersProvider } from "@/components/app/filters";
 import { restoreSession } from "@/lib/data/auth";
 
 export const Route = createFileRoute("/_panel")({
-  // Prototype session lives in browser storage, which the server cannot read.
+  // Supabase client session is currently browser-managed; validate it before rendering this area.
   ssr: false,
   beforeLoad: async ({ location }) => {
     let session = null;
