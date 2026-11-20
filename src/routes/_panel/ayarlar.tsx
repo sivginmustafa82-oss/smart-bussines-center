@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDelete } from "@/components/app/ConfirmDelete";
 import { Field, PageHeader, Panel } from "@/components/app/ui-bits";
 import { useWorkspace } from "@/lib/data/hooks";
-import { importLocalWorkspaceToSupabase, type CloudImportResult } from "@/lib/data/cloud-import";
+import { type CloudImportResult } from "@/lib/data/cloud-import";
+import { syncWorkspaceWithCloud, type CloudSyncResult } from "@/lib/data/cloud-sync";
 import { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
 
@@ -62,6 +63,7 @@ function Settings() {
   const [isRestoring, setIsRestoring] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<CloudImportResult | null>(null);
+  const [syncResult, setSyncResult] = useState<CloudSyncResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
   const localCounts = {
@@ -125,17 +127,18 @@ function Settings() {
     }
   }
 
-  async function importToCloud() {
+  async function syncCloud() {
     setIsImporting(true);
     setImportError(null);
     try {
-      const result = await importLocalWorkspaceToSupabase();
-      setImportResult(result);
-      toast.success("İşletme kayıtları Supabase'e aktarıldı");
+      const result = await syncWorkspaceWithCloud();
+      setSyncResult(result);
+      setImportResult({ ...result, importedAt: result.syncedAt });
+      toast.success("Bulut ve bu cihaz başarıyla eşitlendi");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Aktarım sırasında bilinmeyen bir hata oluştu.";
       setImportError(message);
-      toast.error("Aktarım tamamlanamadı");
+      toast.error("Bulut eşitlemesi tamamlanamadı");
     } finally {
       setIsImporting(false);
     }
@@ -195,8 +198,8 @@ function Settings() {
         </Panel>
 
         <Panel
-          title="İşletme verilerini buluta aktar"
-          description="Bu tarayıcıdaki mağaza, ürün, sipariş, gider ve mutabakat kayıtlarını Supabase hesabınıza kopyalar."
+          title="Bulut eşitleme"
+          description="Buluttaki kayıtları bu cihaza alır, bu cihazdaki yeni kayıtları da buluta gönderir. Hiçbir kayıt otomatik silinmez."
           className="lg:col-span-2"
         >
           <div className="grid gap-3 sm:grid-cols-5">
@@ -227,9 +230,9 @@ function Settings() {
               {isRestoring ? <Loader2 className="animate-spin" /> : <Upload />}
               {isRestoring ? "Yedek okunuyor…" : "Eski uygulama JSON yedeğini yükle"}
             </Button>
-            <Button onClick={() => void importToCloud()} disabled={isImporting || isRestoring || totalLocal === 0}>
+            <Button onClick={() => void syncCloud()} disabled={isImporting || isRestoring || totalLocal === 0}>
               {isImporting ? <Loader2 className="animate-spin" /> : <CloudUpload />}
-              {isImporting ? "Buluta aktarılıyor…" : "Yerel verileri buluta aktar"}
+              {isImporting ? "Eşitleniyor…" : "Şimdi bulutla eşitle"}
             </Button>
             <Button variant="outline" onClick={download}>
               <Download /> Önce yedek indir (JSON)
@@ -245,6 +248,15 @@ function Settings() {
             </p>
           )}
 
+          {syncResult && (
+            <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
+              <p className="font-medium text-success">Son bulut eşitlemesi</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {new Date(syncResult.syncedAt).toLocaleString("tr-TR")} · {syncResult.stores} mağaza · {syncResult.products} ürün · {syncResult.orders} sipariş · {syncResult.expenses} gider · {syncResult.reconciliations} mutabakat buluttan alındı.
+              </p>
+            </div>
+          )}
+
           {importResult && (
             <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
               <p className="font-medium text-success">Son başarılı aktarım</p>
@@ -258,9 +270,7 @@ function Settings() {
             Eski Lovable adresindeki kaydı taşımak için önce eski uygulamada Ayarlar → Verileri indir (JSON) ile yedek alın;
             sonra bu ekranda “Eski uygulama JSON yedeğini yükle” düğmesini kullanın. Yükleme, kayıtları mevcut çalışma alanınıza
             ekler ve mağaza/ürün bağlantılarını korur. Ardından “Yerel verileri buluta aktar” düğmesine basın.
-            Aktarım sırasında kaynak kayıtlar silinmez. Aktarım yarıda kesilirse aynı düğmeye tekrar basılabilir;
-            aynı kayıt kimlikleri kullanıldığı için yeniden deneme çoğaltma yapmaz. Aktarım yalnızca bu tarayıcıda
-            bulunan mevcut kayıtları kopyalar; bundan sonraki canlı veri eşitlemesi ayrı bir geliştirme adımıdır.
+            Eşitleme sırasında kaynak kayıtlar silinmez. İşlem yarıda kesilirse tekrar çalıştırabilirsiniz; sabit kayıt kimlikleri yinelenen kayıt oluşmasını önler. Bulut ve cihaz kayıtları birleştirilir. Çakışan iki cihaz düzenlemesinde henüz otomatik sürüm/çatışma çözümü yoktur; önemli değişikliklerden sonra eşitlemenin tamamlandığını kontrol edin.
           </p>
         </Panel>
 
