@@ -95,8 +95,9 @@ export function AppSidebar() {
             <SidebarMenuButton
               tooltip="Çıkış yap"
               onClick={() => {
-                signOut();
-                navigate({ to: "/giris", replace: true });
+                void signOut()
+                  .catch((error) => console.error("[Auth] Sign out failed", error))
+                  .finally(() => navigate({ to: "/giris", replace: true }));
               }}
             >
               <LogOut />
