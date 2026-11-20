@@ -217,6 +217,6 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     expenses: expenses.length,
     reconciliations: reconciliations.length,
   };
-  window.localStorage.setItem("sbc:v1:cloud-sync:" + session.tenantId, JSON.stringify({ ...result, pushed }));
+  window.localStorage.setItem("sbc:v1:cloud-sync:" + session.tenantId, JSON.stringify(result));
   return result;
 }
