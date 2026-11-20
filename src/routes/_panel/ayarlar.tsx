@@ -114,7 +114,7 @@ function Settings() {
     try {
       const result = await importTenantBackupFile(file);
       setImportResult(null);
-      toast.success(`Eski yedek yüklendi: ${result.stores} mağaza, ${result.products} ürün, ${result.orders} sipariş`);
+      toast.success(`Yedek yüklendi: ${result.stores} mağaza, ${result.products} ürün, ${result.orders} sipariş, ${result.expenses} gider, ${result.reconciliations} mutabakat`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Yedek yüklenemedi.";
       setImportError(message);
