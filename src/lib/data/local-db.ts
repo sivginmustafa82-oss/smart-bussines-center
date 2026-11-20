@@ -1,7 +1,7 @@
 /**
- * Browser-local persistence for the MVP (no backend is connected yet).
- * All reads/writes go through repo.ts, which enforces tenant/store ownership.
- * Swap this module for a server-backed implementation when a backend is approved.
+ * Local-first workspace cache.
+ * Supabase Auth validates accounts; business rows remain here until explicitly imported.
+ * Keep this copy intact during cloud migration so older browser data can be recovered.
  */
 import type {
   Expense,
