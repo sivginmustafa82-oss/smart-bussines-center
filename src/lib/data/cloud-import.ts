@@ -108,6 +108,8 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
     store_id: storeIds.get(product.storeId)!,
     title: product.name,
     status: "active",
+    data_source: product.source,
+    verified: product.verified,
     created_at: product.createdAt,
     updated_at: product.updatedAt,
   }));
@@ -151,6 +153,8 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
     shipping_amount: order.shippingAmount,
     withholding_amount: order.withholdingAmount,
     note: order.note,
+    data_source: order.source,
+    verified: order.verified,
     created_at: order.createdAt,
   }));
 
@@ -163,6 +167,7 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
     description: expense.description,
     amount: expense.amount,
     currency: "TRY",
+    data_source: expense.source,
     created_at: expense.createdAt,
   }));
 
