@@ -45,6 +45,24 @@ function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
   return [...byId.values()];
 }
 
+async function readAllRows(
+  table: "stores" | "products" | "product_variants" | "product_costs" | "order_records" | "expenses" | "reconciliations",
+  organizationId: string,
+): Promise<Row[]> {
+  const all: Row[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("organization_id", organizationId)
+      .range(offset, offset + 999);
+    if (error) throw new Error("Bulut kayıtları okunamadı (" + table + "): " + error.message);
+    const batch = (data ?? []) as Row[];
+    all.push(...batch);
+    if (batch.length < 1000) return all;
+  }
+}
+
 /**
  * Pulls organization-owned rows into the browser cache, then pushes the merged
  * cache back. It never deletes remote rows or clears local data.
@@ -64,28 +82,20 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     idMap = {};
   }
 
-  const [storeResult, productResult, variantResult, costResult, orderResult, expenseResult, reconciliationResult] =
+  const [storesRows, productsRows, variantsRows, costsRows, ordersRows, expensesRows, reconciliationsRows] =
     await Promise.all([
-      supabase.from("stores").select("*").eq("organization_id", orgId),
-      supabase.from("products").select("*").eq("organization_id", orgId),
-      supabase.from("product_variants").select("*").eq("organization_id", orgId),
-      supabase.from("product_costs").select("*").eq("organization_id", orgId).order("effective_from", { ascending: false }),
-      supabase.from("order_records").select("*").eq("organization_id", orgId),
-      supabase.from("expenses").select("*").eq("organization_id", orgId),
-      supabase.from("reconciliations").select("*").eq("organization_id", orgId),
+      readAllRows("stores", orgId),
+      readAllRows("products", orgId),
+      readAllRows("product_variants", orgId),
+      readAllRows("product_costs", orgId),
+      readAllRows("order_records", orgId),
+      readAllRows("expenses", orgId),
+      readAllRows("reconciliations", orgId),
     ]);
-
-  const results = [storeResult, productResult, variantResult, costResult, orderResult, expenseResult, reconciliationResult];
-  const failed = results.find((result) => result.error);
-  if (failed?.error) throw new Error("Bulut kayıtları okunamadı: " + failed.error.message);
-
-  const storesRows = (storeResult.data ?? []) as Row[];
-  const productsRows = (productResult.data ?? []) as Row[];
-  const variantsRows = (variantResult.data ?? []) as Row[];
-  const costsRows = (costResult.data ?? []) as Row[];
-  const ordersRows = (orderResult.data ?? []) as Row[];
-  const expensesRows = (expenseResult.data ?? []) as Row[];
-  const reconciliationsRows = (reconciliationResult.data ?? []) as Row[];
+  costsRows.sort((a, b) =>
+    String(b.effective_from ?? "").localeCompare(String(a.effective_from ?? "")) ||
+    String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+  );
 
   const storeIdMap = new Map<string, string>();
   const productIdMap = new Map<string, string>();
