@@ -230,7 +230,7 @@ function Settings() {
               {isRestoring ? <Loader2 className="animate-spin" /> : <Upload />}
               {isRestoring ? "Yedek okunuyor…" : "Eski uygulama JSON yedeğini yükle"}
             </Button>
-            <Button onClick={() => void syncCloud()} disabled={isImporting || isRestoring || totalLocal === 0}>
+            <Button onClick={() => void syncCloud()} disabled={isImporting || isRestoring}>
               {isImporting ? <Loader2 className="animate-spin" /> : <CloudUpload />}
               {isImporting ? "Eşitleniyor…" : "Şimdi bulutla eşitle"}
             </Button>
@@ -238,7 +238,7 @@ function Settings() {
               <Download /> Önce yedek indir (JSON)
             </Button>
             <span className="text-xs text-muted-foreground">
-              {totalLocal === 0 ? "Aktarılacak yerel kayıt bulunamadı." : `${totalLocal} kayıt aktarılmaya hazır.`}
+              {totalLocal === 0 ? "Bu cihazda yerel kayıt yok; buluttaki kayıtları indirmek için eşitlemeyi başlatabilirsiniz." : `${totalLocal} kayıt eşitlemeye hazır.`}
             </span>
           </div>
 
