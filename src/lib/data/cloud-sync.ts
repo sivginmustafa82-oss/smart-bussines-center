@@ -198,7 +198,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   }));
 
   // Pushes local-only records and updates after the pull. No remote DELETE is issued.
-  const pushed = await importLocalWorkspaceToSupabase();
+  await importLocalWorkspaceToSupabase();
   const result: CloudSyncResult = {
     syncedAt: new Date().toISOString(),
     stores: stores.length,
