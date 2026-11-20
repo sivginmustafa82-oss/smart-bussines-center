@@ -116,10 +116,19 @@ function assertUniqueIds<T extends { id: string }>(rows: T[], label: string) {
   }
 }
 
-function upsertById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
-  const rows = new Map(current.map((row) => [row.id, row]));
-  for (const row of incoming) rows.set(row.id, row);
-  return [...rows.values()];
+function upsertTenantRows<T extends { id: string; tenantId: string }>(
+  current: T[],
+  incoming: T[],
+  tenantId: string,
+): T[] {
+  const otherTenants = current.filter((row) => row.tenantId !== tenantId);
+  const otherIds = new Set(otherTenants.map((row) => row.id));
+  if (incoming.some((row) => otherIds.has(row.id))) {
+    throw new Error("Yedek dosyasındaki bir kayıt kimliği başka bir çalışma alanıyla çakışıyor. Hiçbir kayıt değiştirilmedi.");
+  }
+  const ownRows = new Map(current.filter((row) => row.tenantId === tenantId).map((row) => [row.id, row]));
+  for (const row of incoming) ownRows.set(row.id, row);
+  return [...otherTenants, ...ownRows.values()];
 }
 
 /**
@@ -215,11 +224,11 @@ export async function importTenantBackupFile(file: File): Promise<{
           createdAt: currentTenant?.createdAt ?? backup.tenant.createdAt,
         },
       ],
-      stores: upsertById(db.stores, importedStores),
-      products: upsertById(db.products, importedProducts),
-      orders: upsertById(db.orders, importedOrders),
-      expenses: upsertById(db.expenses, importedExpenses),
-      reconciliations: upsertById(db.reconciliations, importedReconciliations),
+      stores: upsertTenantRows(db.stores, importedStores, session.tenantId),
+      products: upsertTenantRows(db.products, importedProducts, session.tenantId),
+      orders: upsertTenantRows(db.orders, importedOrders, session.tenantId),
+      expenses: upsertTenantRows(db.expenses, importedExpenses, session.tenantId),
+      reconciliations: upsertTenantRows(db.reconciliations, importedReconciliations, session.tenantId),
     };
   });
 
