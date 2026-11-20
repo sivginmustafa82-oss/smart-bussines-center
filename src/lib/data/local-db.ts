@@ -25,8 +25,13 @@ export interface DB {
 }
 
 export interface Session {
+  /** Local identity retained to keep existing browser-only business records intact. */
   userId: string;
   tenantId: string;
+  /** Verified Supabase Auth identity and cloud organization. */
+  cloudUserId?: string;
+  cloudOrganizationId?: string;
+  authProvider?: "supabase";
   createdAt: string;
 }
 
