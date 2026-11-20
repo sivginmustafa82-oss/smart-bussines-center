@@ -217,7 +217,7 @@ function InlineCost({ product, tenantId }: { product: Product; tenantId: string 
     if (value === initial) return;
     const r = optionalMoneyField("Birim maliyet").safeParse(value);
     if (!r.success) {
-      setError(r.error.issues[0].message);
+      setError(r.error.issues[0]?.message ?? "Geçersiz tutar");
       return;
     }
     setError(null);
@@ -257,7 +257,7 @@ function ProductDialog({
   onClose: () => void;
   tenantId: string;
   stores: { id: string; name: string }[];
-  defaultStore?: string;
+  defaultStore?: string | undefined;
 }) {
   const p = editing && editing !== "new" ? editing : null;
   const [storeId, setStoreId] = useState(p?.storeId ?? defaultStore ?? "");

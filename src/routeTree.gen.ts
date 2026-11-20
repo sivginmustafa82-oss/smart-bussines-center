@@ -12,12 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PanelRouteRouteImport } from './routes/_panel/route'
 import { Route as GirisRouteImport } from './routes/giris'
+import { Route as PanelAyarlarRouteImport } from './routes/_panel/ayarlar'
 import { Route as PanelGenelBakisRouteImport } from './routes/_panel/genel-bakis'
+import { Route as PanelGiderlerRouteImport } from './routes/_panel/giderler'
 import { Route as PanelKarlilikRouteImport } from './routes/_panel/karlilik'
 import { Route as PanelSiparislerRouteImport } from './routes/_panel/siparisler'
 import { Route as PanelUrunlerRouteImport } from './routes/_panel/urunler'
 import { Route as PanelMagazalarIndexRouteImport } from './routes/_panel/magazalar.index'
 import { Route as PanelMagazalarStoreIdRouteImport } from './routes/_panel/magazalar.$storeId'
+import { Route as PanelRaporlarIndexRouteImport } from './routes/_panel/raporlar.index'
+import { Route as PanelRaporlarMutabakatRouteImport } from './routes/_panel/raporlar.mutabakat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -33,9 +37,19 @@ const GirisRoute = GirisRouteImport.update({
   path: '/giris',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PanelAyarlarRoute = PanelAyarlarRouteImport.update({
+  id: '/ayarlar',
+  path: '/ayarlar',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
 const PanelGenelBakisRoute = PanelGenelBakisRouteImport.update({
   id: '/genel-bakis',
   path: '/genel-bakis',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
+const PanelGiderlerRoute = PanelGiderlerRouteImport.update({
+  id: '/giderler',
+  path: '/giderler',
   getParentRoute: () => PanelRouteRoute,
 } as any)
 const PanelKarlilikRoute = PanelKarlilikRouteImport.update({
@@ -63,71 +77,105 @@ const PanelMagazalarStoreIdRoute = PanelMagazalarStoreIdRouteImport.update({
   path: '/magazalar/$storeId',
   getParentRoute: () => PanelRouteRoute,
 } as any)
+const PanelRaporlarIndexRoute = PanelRaporlarIndexRouteImport.update({
+  id: '/raporlar/',
+  path: '/raporlar/',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
+const PanelRaporlarMutabakatRoute = PanelRaporlarMutabakatRouteImport.update({
+  id: '/raporlar/mutabakat',
+  path: '/raporlar/mutabakat',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/giris': typeof GirisRoute
+  '/ayarlar': typeof PanelAyarlarRoute
   '/genel-bakis': typeof PanelGenelBakisRoute
+  '/giderler': typeof PanelGiderlerRoute
   '/karlilik': typeof PanelKarlilikRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
+  '/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/magazalar/': typeof PanelMagazalarIndexRoute
+  '/raporlar/': typeof PanelRaporlarIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/giris': typeof GirisRoute
+  '/ayarlar': typeof PanelAyarlarRoute
   '/genel-bakis': typeof PanelGenelBakisRoute
+  '/giderler': typeof PanelGiderlerRoute
   '/karlilik': typeof PanelKarlilikRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
+  '/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/magazalar': typeof PanelMagazalarIndexRoute
+  '/raporlar': typeof PanelRaporlarIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_panel': typeof PanelRouteRouteWithChildren
   '/giris': typeof GirisRoute
+  '/_panel/ayarlar': typeof PanelAyarlarRoute
   '/_panel/genel-bakis': typeof PanelGenelBakisRoute
+  '/_panel/giderler': typeof PanelGiderlerRoute
   '/_panel/karlilik': typeof PanelKarlilikRoute
   '/_panel/siparisler': typeof PanelSiparislerRoute
   '/_panel/urunler': typeof PanelUrunlerRoute
   '/_panel/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
+  '/_panel/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/_panel/magazalar/': typeof PanelMagazalarIndexRoute
+  '/_panel/raporlar/': typeof PanelRaporlarIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/giris'
+    | '/ayarlar'
     | '/genel-bakis'
+    | '/giderler'
     | '/karlilik'
     | '/siparisler'
     | '/urunler'
     | '/magazalar/$storeId'
+    | '/raporlar/mutabakat'
     | '/magazalar/'
+    | '/raporlar/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/giris'
+    | '/ayarlar'
     | '/genel-bakis'
+    | '/giderler'
     | '/karlilik'
     | '/siparisler'
     | '/urunler'
     | '/magazalar/$storeId'
+    | '/raporlar/mutabakat'
     | '/magazalar'
+    | '/raporlar'
   id:
     | '__root__'
     | '/'
     | '/_panel'
     | '/giris'
+    | '/_panel/ayarlar'
     | '/_panel/genel-bakis'
+    | '/_panel/giderler'
     | '/_panel/karlilik'
     | '/_panel/siparisler'
     | '/_panel/urunler'
     | '/_panel/magazalar/$storeId'
+    | '/_panel/raporlar/mutabakat'
     | '/_panel/magazalar/'
+    | '/_panel/raporlar/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -159,11 +207,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GirisRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_panel/ayarlar': {
+      id: '/_panel/ayarlar'
+      path: '/ayarlar'
+      fullPath: '/ayarlar'
+      preLoaderRoute: typeof PanelAyarlarRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
     '/_panel/genel-bakis': {
       id: '/_panel/genel-bakis'
       path: '/genel-bakis'
       fullPath: '/genel-bakis'
       preLoaderRoute: typeof PanelGenelBakisRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
+    '/_panel/giderler': {
+      id: '/_panel/giderler'
+      path: '/giderler'
+      fullPath: '/giderler'
+      preLoaderRoute: typeof PanelGiderlerRouteImport
       parentRoute: typeof PanelRouteRoute
     }
     '/_panel/karlilik': {
@@ -201,25 +263,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PanelMagazalarStoreIdRouteImport
       parentRoute: typeof PanelRouteRoute
     }
+    '/_panel/raporlar/': {
+      id: '/_panel/raporlar/'
+      path: '/raporlar'
+      fullPath: '/raporlar/'
+      preLoaderRoute: typeof PanelRaporlarIndexRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
+    '/_panel/raporlar/mutabakat': {
+      id: '/_panel/raporlar/mutabakat'
+      path: '/raporlar/mutabakat'
+      fullPath: '/raporlar/mutabakat'
+      preLoaderRoute: typeof PanelRaporlarMutabakatRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
   }
 }
 
 interface PanelRouteRouteChildren {
+  PanelAyarlarRoute: typeof PanelAyarlarRoute
   PanelGenelBakisRoute: typeof PanelGenelBakisRoute
+  PanelGiderlerRoute: typeof PanelGiderlerRoute
   PanelKarlilikRoute: typeof PanelKarlilikRoute
   PanelSiparislerRoute: typeof PanelSiparislerRoute
   PanelUrunlerRoute: typeof PanelUrunlerRoute
   PanelMagazalarStoreIdRoute: typeof PanelMagazalarStoreIdRoute
+  PanelRaporlarMutabakatRoute: typeof PanelRaporlarMutabakatRoute
   PanelMagazalarIndexRoute: typeof PanelMagazalarIndexRoute
+  PanelRaporlarIndexRoute: typeof PanelRaporlarIndexRoute
 }
 
 const PanelRouteRouteChildren: PanelRouteRouteChildren = {
+  PanelAyarlarRoute: PanelAyarlarRoute,
   PanelGenelBakisRoute: PanelGenelBakisRoute,
+  PanelGiderlerRoute: PanelGiderlerRoute,
   PanelKarlilikRoute: PanelKarlilikRoute,
   PanelSiparislerRoute: PanelSiparislerRoute,
   PanelUrunlerRoute: PanelUrunlerRoute,
   PanelMagazalarStoreIdRoute: PanelMagazalarStoreIdRoute,
+  PanelRaporlarMutabakatRoute: PanelRaporlarMutabakatRoute,
   PanelMagazalarIndexRoute: PanelMagazalarIndexRoute,
+  PanelRaporlarIndexRoute: PanelRaporlarIndexRoute,
 }
 
 const PanelRouteRouteWithChildren = PanelRouteRoute._addFileChildren(

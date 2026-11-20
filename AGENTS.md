@@ -28,3 +28,11 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+
+- Persistence is browser-local for the MVP (`src/lib/data/local-db.ts`); all reads/writes go through the tenant-scoped repository in `src/lib/data/repo.ts`. Why: no backend is approved yet, and keeping one data boundary makes the later server swap a single-module change.
+- Every write verifies tenant and store ownership in the repository; a server version must enforce the same with RLS (plan in `docs/veri-modeli.sql`). Why: multi-tenant isolation is a core requirement.
+- Profit and reconciliation math lives only in pure functions under `src/lib/domain/` with tests in `__tests__`. Why: the numbers must stay transparent and verifiable; UI only displays them.
+- Signed-in pages live under the pathless `src/routes/_panel/` layout with `ssr: false`. Why: the prototype session is in browser storage the server cannot read.
+- Marketplace credentials must never be stored, returned or rendered in browser code; the connection form stays disabled until a server-side secret store exists. Why: security requirement.

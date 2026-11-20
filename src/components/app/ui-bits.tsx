@@ -13,9 +13,9 @@ export function PageHeader({
   eyebrow,
 }: {
   title: string;
-  description?: ReactNode;
-  actions?: ReactNode;
-  eyebrow?: string;
+  description?: ReactNode | undefined;
+  actions?: ReactNode | undefined;
+  eyebrow?: string | undefined;
 }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -41,8 +41,8 @@ export function EmptyState({
   icon: ReactNode;
   title: string;
   description: ReactNode;
-  action?: ReactNode;
-  className?: string;
+  action?: ReactNode | undefined;
+  className?: string | undefined;
 }) {
   return (
     <div
@@ -95,9 +95,9 @@ export function Money({
   sign,
 }: {
   value: number | null | undefined;
-  className?: string;
+  className?: string | undefined;
   /** Show deductions with a leading minus. */
-  sign?: "minus";
+  sign?: "minus" | undefined;
 }) {
   const v = value ?? null;
   return (
@@ -124,10 +124,10 @@ export function Field({
 }: {
   label: string;
   htmlFor: string;
-  error?: string;
-  hint?: ReactNode;
+  error?: string | undefined;
+  hint?: ReactNode | undefined;
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
@@ -151,11 +151,11 @@ export function Panel({
   children,
   className,
 }: {
-  title?: ReactNode;
-  description?: ReactNode;
-  actions?: ReactNode;
+  title?: ReactNode | undefined;
+  description?: ReactNode | undefined;
+  actions?: ReactNode | undefined;
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <section className={cn("rounded-xl border bg-card shadow-card", className)}>

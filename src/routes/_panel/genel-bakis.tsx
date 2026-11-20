@@ -243,7 +243,7 @@ function SetupSteps({
   className,
 }: {
   steps: { done: boolean; label: string; to: "/magazalar" | "/urunler" | "/siparisler" | "/giderler" | "/raporlar/mutabakat" }[];
-  className?: string;
+  className?: string | undefined;
 }) {
   const done = steps.filter((s) => s.done).length;
   return (

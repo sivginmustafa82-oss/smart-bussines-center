@@ -11,8 +11,8 @@ import { currentSession, signIn, signUp } from "@/lib/data/auth";
 import { signInSchema, signUpSchema, toFieldErrors, type FieldErrors } from "@/lib/domain/schemas";
 
 export const Route = createFileRoute("/giris")({
-  validateSearch: (s: Record<string, unknown>): { redirect?: string } => ({
-    redirect: typeof s.redirect === "string" ? s.redirect : undefined,
+  validateSearch: (s: Record<string, unknown>): { redirect?: string | undefined } => ({
+    redirect: typeof s["redirect"] === "string" ? s["redirect"] : undefined,
   }),
   head: () => ({
     meta: [

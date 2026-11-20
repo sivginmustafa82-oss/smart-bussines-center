@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseAmount } from "@/lib/format";
 import { VAT_RATES } from "./labels";
+import type { Expense, MarketplaceTotals, OrderRecord, Product } from "./types";
 
 const MAX_AMOUNT = 1_000_000_000;
 
@@ -39,7 +40,7 @@ export const optionalMoneyField = (label: string) =>
       if (s === "") return null;
       const r = moneyField(label).safeParse(s);
       if (!r.success) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: r.error.issues[0].message });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: r.error.issues[0]?.message ?? `${label} geçersiz` });
         return z.NEVER;
       }
       return r.data;
@@ -155,14 +156,27 @@ export const reconciliationSchema = z.object({
   note: z.string().trim().max(300, "En fazla 300 karakter"),
 });
 
-export type FieldErrors = Record<string, string>;
+export type FieldKey =
+  | keyof OrderRecord
+  | keyof Product
+  | keyof Expense
+  | keyof MarketplaceTotals
+  | "name"
+  | "companyName"
+  | "email"
+  | "password"
+  | "marketplace"
+  | "period"
+  | "_form";
+
+export type FieldErrors = Partial<Record<FieldKey, string>>;
 
 /** Flattens zod issues into { field: firstMessage } for inline form errors. */
 export function toFieldErrors(error: z.ZodError): FieldErrors {
-  const out: FieldErrors = {};
+  const out: Record<string, string> = {};
   for (const issue of error.issues) {
     const key = issue.path.join(".") || "_form";
     if (!out[key]) out[key] = issue.message;
   }
-  return out;
+  return out as FieldErrors;
 }

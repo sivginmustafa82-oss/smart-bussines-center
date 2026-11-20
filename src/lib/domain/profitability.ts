@@ -166,7 +166,7 @@ export function activePeriods(records: OrderRecord[], expenses: Expense[]): stri
 }
 
 export function periodRange(period: string): { from: string; to: string } {
-  const [y, m] = period.split("-").map(Number);
+  const [y = 1970, m = 1] = period.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return { from: `${period}-01`, to: `${period}-${String(last).padStart(2, "0")}` };
 }

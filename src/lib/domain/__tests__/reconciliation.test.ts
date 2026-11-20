@@ -9,7 +9,7 @@ describe("compareTotals", () => {
       grossSales: 1000.9, cancellations: 0, returns: 120, discounts: null,
       commission: 150, shipping: 40, withholding: 10, netPayout: 650,
     });
-    const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+    const by = Object.fromEntries(rows.map((r) => [r.key, r])) as Record<(typeof rows)[number]["key"], (typeof rows)[number]>;
     expect(by.grossSales.status).toBe("match");
     expect(by.returns.status).toBe("mismatch");
     expect(by.returns.diff).toBe(-20);

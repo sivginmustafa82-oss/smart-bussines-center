@@ -195,7 +195,7 @@ function SourceSummary({ manual, imported }: { manual: number; imported: number 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       <SourceBadge source="manual" /> {manual} kayıt
-      <SourceBadge source="imported" verified /> {imported} kayıt
+      <SourceBadge source="imported" /> {imported} kayıt
     </div>
   );
 }
