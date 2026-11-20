@@ -71,15 +71,33 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
   const orgId = session.cloudOrganizationId;
   const idMap = getIdMap(session.tenantId);
 
+  const invalidStore = snapshot.stores.find((store) => store.name.trim().length < 2 || store.name.trim().length > 80);
+  if (invalidStore) {
+    throw new Error(`"${invalidStore.name}" mağaza adı Supabase için 2–80 karakter arasında olmalı.`);
+  }
+  const invalidVatProduct = snapshot.products.find((product) => ![0, 1, 10, 20].includes(product.vatRate));
+  if (invalidVatProduct) {
+    throw new Error(`"${invalidVatProduct.name}" ürününün KDV oranı desteklenmiyor. Yalnızca %0, %1, %10 veya %20 kullanılabilir.`);
+  }
+  const storeIdSet = new Set(snapshot.stores.map((store) => store.id));
+  const invalidProductStore = snapshot.products.find((product) => !storeIdSet.has(product.storeId));
+  if (invalidProductStore) {
+    throw new Error(`"${invalidProductStore.name}" ürününün bağlı olduğu mağaza bulunamadı; aktarım durduruldu.`);
+  }
+  const invalidOrderStore = snapshot.orders.find((order) => !storeIdSet.has(order.storeId));
+  if (invalidOrderStore) {
+    throw new Error(`"${invalidOrderStore.orderNumber}" sipariş kaydının mağazası bulunamadı; aktarım durduruldu.`);
+  }
+
   const stores = snapshot.stores.map((store) => ({
     id: cloudId(idMap, "store", store.id),
     organization_id: orgId,
     marketplace: marketplaceName[store.marketplace],
-    name: store.name,
+    name: store.name.trim(),
     country_code: "TR",
     currency: "TRY",
     timezone: "Europe/Istanbul",
-    connection_status: store.connectionStatus,
+    // connection_status is intentionally omitted: its column is server-controlled.
     created_at: store.createdAt,
   }));
 
