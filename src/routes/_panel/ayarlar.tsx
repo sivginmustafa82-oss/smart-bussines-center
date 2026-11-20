@@ -270,7 +270,7 @@ function Settings() {
             Eski Lovable adresindeki kaydı taşımak için önce eski uygulamada Ayarlar → Verileri indir (JSON) ile yedek alın;
             sonra bu ekranda “Eski uygulama JSON yedeğini yükle” düğmesini kullanın. Yükleme, kayıtları mevcut çalışma alanınıza
             ekler ve mağaza/ürün bağlantılarını korur. Ardından “Yerel verileri buluta aktar” düğmesine basın.
-            Eşitleme sırasında kaynak kayıtlar silinmez. İşlem yarıda kesilirse tekrar çalıştırabilirsiniz; sabit kayıt kimlikleri yinelenen kayıt oluşmasını önler. Bulut ve cihaz kayıtları birleştirilir. Çakışan iki cihaz düzenlemesinde henüz otomatik sürüm/çatışma çözümü yoktur; önemli değişikliklerden sonra eşitlemenin tamamlandığını kontrol edin.
+            Eşitleme sırasında kaynak kayıtlar silinmez. İşlem yarıda kesilirse tekrar çalıştırabilirsiniz; sabit kayıt kimlikleri yinelenen kayıt oluşmasını önler. Bulut ve cihaz kayıtları birleştirilir. Bu cihazda henüz buluta gönderilmemiş ürün düzenlemeleri eski bulut kopyasının üzerine yazılmadan korunur ve buluta aktarılır; önemli değişikliklerden sonra eşitlemenin tamamlandığını kontrol edin.
           </p>
         </Panel>
 
