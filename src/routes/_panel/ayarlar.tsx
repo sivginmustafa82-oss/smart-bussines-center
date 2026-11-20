@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDelete } from "@/components/app/ConfirmDelete";
 import { Field, PageHeader, Panel } from "@/components/app/ui-bits";
 import { useWorkspace } from "@/lib/data/hooks";
-import { importLocalWorkspaceToSupabase, type CloudImportResult } from "@/lib/data/cloud-import";\nimport { importTenantBackupFile } from "@/lib/data/legacy-backup";
+import { importLocalWorkspaceToSupabase, type CloudImportResult } from "@/lib/data/cloud-import";
+import { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
 
 export const Route = createFileRoute("/_panel/ayarlar")({
