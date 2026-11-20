@@ -124,33 +124,39 @@ export type Database = {
           category: string
           created_at: string
           currency: string
+          data_source: string
           description: string | null
           expense_date: string
           id: string
           organization_id: string
           store_id: string | null
+          updated_at: string
         }
         Insert: {
           amount: number
           category: string
           created_at?: string
           currency?: string
+          data_source?: string
           description?: string | null
           expense_date?: string
           id?: string
           organization_id: string
           store_id?: string | null
+          updated_at?: string
         }
         Update: {
           amount?: number
           category?: string
           created_at?: string
           currency?: string
+          data_source?: string
           description?: string | null
           expense_date?: string
           id?: string
           organization_id?: string
           store_id?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -317,6 +323,104 @@ export type Database = {
             columns: ["variant_id", "organization_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      order_records: {
+        Row: {
+          commission_amount: number
+          coupon_amount: number
+          created_at: string
+          currency: string
+          data_source: string
+          discount_amount: number
+          gross_amount: number
+          id: string
+          note: string
+          order_number: string
+          organization_id: string
+          product_id: string | null
+          quantity: number
+          record_date: string
+          record_type: string
+          shipping_amount: number
+          store_id: string
+          updated_at: string
+          verified: boolean
+          withholding_amount: number
+        }
+        Insert: {
+          commission_amount?: number
+          coupon_amount?: number
+          created_at?: string
+          currency?: string
+          data_source?: string
+          discount_amount?: number
+          gross_amount: number
+          id?: string
+          note?: string
+          order_number: string
+          organization_id: string
+          product_id?: string | null
+          quantity: number
+          record_date: string
+          record_type: string
+          shipping_amount?: number
+          store_id: string
+          updated_at?: string
+          verified?: boolean
+          withholding_amount?: number
+        }
+        Update: {
+          commission_amount?: number
+          coupon_amount?: number
+          created_at?: string
+          currency?: string
+          data_source?: string
+          discount_amount?: number
+          gross_amount?: number
+          id?: string
+          note?: string
+          order_number?: string
+          organization_id?: string
+          product_id?: string | null
+          quantity?: number
+          record_date?: string
+          record_type?: string
+          shipping_amount?: number
+          store_id?: string
+          updated_at?: string
+          verified?: boolean
+          withholding_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_records_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_records_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "app_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_records_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_records_store_fk"
+            columns: ["store_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
             referencedColumns: ["id", "organization_id"]
           },
         ]
@@ -527,6 +631,7 @@ export type Database = {
           stock_quantity: number
           updated_at: string
           variant_name: string | null
+          vat_rate: number | null
         }
         Insert: {
           barcode?: string | null
@@ -542,6 +647,7 @@ export type Database = {
           stock_quantity?: number
           updated_at?: string
           variant_name?: string | null
+          vat_rate?: number | null
         }
         Update: {
           barcode?: string | null
@@ -557,6 +663,7 @@ export type Database = {
           stock_quantity?: number
           updated_at?: string
           variant_name?: string | null
+          vat_rate?: number | null
         }
         Relationships: [
           {
@@ -565,6 +672,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_variants_product_id_organization_id_fkey"
+            columns: ["product_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "app_products"
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "product_variants_product_id_organization_id_fkey"
@@ -580,6 +694,7 @@ export type Database = {
           brand: string | null
           category: string | null
           created_at: string
+          data_source: string
           external_product_id: string | null
           id: string
           organization_id: string
@@ -588,11 +703,13 @@ export type Database = {
           store_id: string
           title: string
           updated_at: string
+          verified: boolean
         }
         Insert: {
           brand?: string | null
           category?: string | null
           created_at?: string
+          data_source?: string
           external_product_id?: string | null
           id?: string
           organization_id: string
@@ -601,11 +718,13 @@ export type Database = {
           store_id: string
           title: string
           updated_at?: string
+          verified?: boolean
         }
         Update: {
           brand?: string | null
           category?: string | null
           created_at?: string
+          data_source?: string
           external_product_id?: string | null
           id?: string
           organization_id?: string
@@ -614,6 +733,7 @@ export type Database = {
           store_id?: string
           title?: string
           updated_at?: string
+          verified?: boolean
         }
         Relationships: [
           {
@@ -652,6 +772,78 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      reconciliations: {
+        Row: {
+          cancellations: number | null
+          commission: number | null
+          created_at: string
+          data_source: string
+          discounts: number | null
+          gross_sales: number | null
+          id: string
+          net_payout: number | null
+          note: string
+          organization_id: string
+          period: string
+          returns: number | null
+          shipping: number | null
+          store_id: string
+          updated_at: string
+          withholding: number | null
+        }
+        Insert: {
+          cancellations?: number | null
+          commission?: number | null
+          created_at?: string
+          data_source?: string
+          discounts?: number | null
+          gross_sales?: number | null
+          id?: string
+          net_payout?: number | null
+          note?: string
+          organization_id: string
+          period: string
+          returns?: number | null
+          shipping?: number | null
+          store_id: string
+          updated_at?: string
+          withholding?: number | null
+        }
+        Update: {
+          cancellations?: number | null
+          commission?: number | null
+          created_at?: string
+          data_source?: string
+          discounts?: number | null
+          gross_sales?: number | null
+          id?: string
+          net_payout?: number | null
+          note?: string
+          organization_id?: string
+          period?: string
+          returns?: number | null
+          shipping?: number | null
+          store_id?: string
+          updated_at?: string
+          withholding?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reconciliations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reconciliations_store_fk"
+            columns: ["store_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
       }
       shipping_rate_cards: {
         Row: {
@@ -822,9 +1014,62 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      app_products: {
+        Row: {
+          barcode: string | null
+          created_at: string | null
+          data_source: string | null
+          id: string | null
+          name: string | null
+          organization_id: string | null
+          sku: string | null
+          store_id: string | null
+          unit_cost: number | null
+          updated_at: string | null
+          variant_id: string | null
+          vat_rate: number | null
+          verified: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_store_id_organization_id_fkey"
+            columns: ["store_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
     }
     Functions: {
+      delete_store: { Args: { p_store_id: string }; Returns: undefined }
+      has_org_role: {
+        Args: { _org: string; _roles: string[] }
+        Returns: boolean
+      }
+      save_manual_product: {
+        Args: {
+          p_barcode: string
+          p_name: string
+          p_product_id: string
+          p_sku: string
+          p_store_id: string
+          p_unit_cost: number
+          p_vat_rate: number
+        }
+        Returns: string
+      }
+      set_product_unit_cost: {
+        Args: { p_product_id: string; p_unit_cost: number }
+        Returns: undefined
+      }
       upsert_marketplace_secret: {
         Args: {
           p_ciphertext: string
