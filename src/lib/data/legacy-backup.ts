@@ -126,7 +126,9 @@ function upsertTenantRows<T extends { id: string; tenantId: string }>(
   if (incoming.some((row) => otherIds.has(row.id))) {
     throw new Error("Yedek dosyasındaki bir kayıt kimliği başka bir çalışma alanıyla çakışıyor. Hiçbir kayıt değiştirilmedi.");
   }
-  const ownRows = new Map(current.filter((row) => row.tenantId === tenantId).map((row) => [row.id, row]));
+  const ownRows = new Map<string, T>(
+    current.filter((row) => row.tenantId === tenantId).map((row) => [row.id, row] as const),
+  );
   for (const row of incoming) ownRows.set(row.id, row);
   return [...otherTenants, ...ownRows.values()];
 }
@@ -182,7 +184,9 @@ export async function importTenantBackupFile(file: File): Promise<{
   assertUniqueIds(backup.reconciliations, "mutabakat");
 
   const storeIds = new Set(backup.stores.map((store) => store.id));
-  const productStore = new Map(backup.products.map((product) => [product.id, product.storeId]));
+  const productStore = new Map<string, string>(
+    backup.products.map((product) => [product.id, product.storeId] as const),
+  );
   if (backup.products.some((product) => !storeIds.has(product.storeId))) {
     throw new Error("Yedekte mağazası bulunmayan ürün var. Kaynak yedeği kontrol edin.");
   }
