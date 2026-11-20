@@ -68,6 +68,11 @@ function Settings() {
     reconciliations: ws.reconciliations.length,
   };
   const totalLocal = Object.values(localCounts).reduce((sum, count) => sum + count, 0);
+  const statusItems = STATUS.map((item) =>
+    item.t === "Bulut veritabanı"
+      ? { ...item, v: importResult ? "Yerel kayıtlar aktarıldı" : "Supabase hazır · aktarım bekliyor", tone: importResult ? ("success" as const) : ("warning" as const) }
+      : item,
+  );
 
   useEffect(() => {
     if (!ws.tenantId || typeof window === "undefined") return;
@@ -147,7 +152,7 @@ function Settings() {
 
         <Panel title="Altyapı durumu" description="Bağlantı ve hazır olan bileşenlerin mevcut durumu.">
           <ul className="space-y-3">
-            {STATUS.map((s) => (
+            {statusItems.map((s) => (
               <li key={s.t} className="flex items-center justify-between gap-3 text-sm">
                 <span className="flex items-center gap-2">
                   <s.icon className="size-4 text-muted-foreground" /> {s.t}
