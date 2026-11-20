@@ -45,6 +45,22 @@ function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
   return [...byId.values()];
 }
 
+/**
+ * Product edits can happen independently on desktop and mobile. Keep the newest
+ * version instead of always letting the cloud copy overwrite a newer local edit.
+ * The subsequent importLocalWorkspaceToSupabase call pushes that newer version.
+ */
+function mergeProductsByUpdatedAt(local: Product[], incoming: Product[]): Product[] {
+  const byId = new Map(local.map((row) => [row.id, row]));
+  for (const row of incoming) {
+    const existing = byId.get(row.id);
+    if (!existing || Date.parse(row.updatedAt) >= Date.parse(existing.updatedAt)) {
+      byId.set(row.id, row);
+    }
+  }
+  return [...byId.values()];
+}
+
 async function readAllRows(
   table: "stores" | "products" | "product_variants" | "product_costs" | "order_records" | "expenses" | "reconciliations",
   organizationId: string,
@@ -197,8 +213,12 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     ...db,
     stores: mergeById(db.stores.filter((row) => row.tenantId !== session.tenantId), stores)
       .concat(db.stores.filter((row) => row.tenantId === session.tenantId && !stores.some((incoming) => incoming.id === row.id))),
-    products: mergeById(db.products.filter((row) => row.tenantId !== session.tenantId), products)
-      .concat(db.products.filter((row) => row.tenantId === session.tenantId && !products.some((incoming) => incoming.id === row.id))),
+    products: mergeProductsByUpdatedAt(
+      db.products.filter((row) => row.tenantId !== session.tenantId),
+      products,
+    ).concat(
+      db.products.filter((row) => row.tenantId === session.tenantId && !products.some((incoming) => incoming.id === row.id)),
+    ),
     orders: mergeById(db.orders.filter((row) => row.tenantId !== session.tenantId), orders)
       .concat(db.orders.filter((row) => row.tenantId === session.tenantId && !orders.some((incoming) => incoming.id === row.id))),
     expenses: mergeById(db.expenses.filter((row) => row.tenantId !== session.tenantId), expenses)
