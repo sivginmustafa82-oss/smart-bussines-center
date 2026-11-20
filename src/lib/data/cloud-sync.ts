@@ -9,6 +9,7 @@ import type {
   Store,
 } from "@/lib/domain/types";
 import { readDB, readSession, writeDB } from "./local-db";
+import { clearPendingProductEdits, getPendingProductEdits, scoped } from "./repo";
 import { importLocalWorkspaceToSupabase } from "./cloud-import";
 
 export interface CloudSyncResult {
@@ -50,9 +51,10 @@ function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
  * version instead of always letting the cloud copy overwrite a newer local edit.
  * The subsequent importLocalWorkspaceToSupabase call pushes that newer version.
  */
-function mergeProductsByUpdatedAt(local: Product[], incoming: Product[]): Product[] {
+function mergeProductsByUpdatedAt(local: Product[], incoming: Product[], pendingLocalIds: Set<string>): Product[] {
   const byId = new Map(local.map((row) => [row.id, row]));
   for (const row of incoming) {
+    if (pendingLocalIds.has(row.id)) continue;
     const existing = byId.get(row.id);
     if (!existing || Date.parse(row.updatedAt) >= Date.parse(existing.updatedAt)) {
       byId.set(row.id, row);
@@ -90,6 +92,12 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   }
 
   const orgId = session.cloudOrganizationId;
+  // Protect unsynced local product versions before pulling cloud rows; this is independent of device clock accuracy.
+  const pendingProductEdits = getPendingProductEdits(session.tenantId);
+  const localProductVersions = new Map(scoped(readDB(), session.tenantId).products.map((p) => [p.id, p.updatedAt]));
+  const pendingLocalProductIds = new Set(
+    Object.entries(pendingProductEdits).filter(([id, updatedAt]) => localProductVersions.get(id) === updatedAt).map(([id]) => id),
+  );
   const idMapKey = "sbc:v1:cloud-id-map:" + session.tenantId;
   let idMap: Record<string, string> = {};
   try {
@@ -213,7 +221,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     ...db,
     stores: mergeById(db.stores.filter((row) => row.tenantId !== session.tenantId), stores)
       .concat(db.stores.filter((row) => row.tenantId === session.tenantId && !stores.some((incoming) => incoming.id === row.id))),
-    products: mergeProductsByUpdatedAt(db.products, products),
+    products: mergeProductsByUpdatedAt(db.products, products, pendingLocalProductIds),
     orders: mergeById(db.orders.filter((row) => row.tenantId !== session.tenantId), orders)
       .concat(db.orders.filter((row) => row.tenantId === session.tenantId && !orders.some((incoming) => incoming.id === row.id))),
     expenses: mergeById(db.expenses.filter((row) => row.tenantId !== session.tenantId), expenses)
@@ -224,6 +232,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
 
   // Pushes local-only records and updates after the pull. No remote DELETE is issued.
   await importLocalWorkspaceToSupabase();
+  clearPendingProductEdits(session.tenantId, pendingProductEdits);
   const result: CloudSyncResult = {
     syncedAt: new Date().toISOString(),
     stores: stores.length,

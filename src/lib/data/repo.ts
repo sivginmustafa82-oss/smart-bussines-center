@@ -88,6 +88,32 @@ export function deleteStore(tenantId: string, storeId: string) {
 
 /* ---------- Products ---------- */
 
+
+const PRODUCT_DIRTY_KEY = "sbc:v1:pending-product-edits:";
+function readPendingProductEdits(tenantId: string): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(PRODUCT_DIRTY_KEY + tenantId);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch { return {}; }
+}
+function markProductDirty(tenantId: string, productId: string, updatedAt: string) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingProductEdits(tenantId);
+  pending[productId] = updatedAt;
+  window.localStorage.setItem(PRODUCT_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+export function getPendingProductEdits(tenantId: string): Record<string, string> {
+  return readPendingProductEdits(tenantId);
+}
+export function clearPendingProductEdits(tenantId: string, uploaded: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingProductEdits(tenantId);
+  for (const [id, updatedAt] of Object.entries(uploaded)) {
+    if (pending[id] === updatedAt) delete pending[id];
+  }
+  window.localStorage.setItem(PRODUCT_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+
 export type ProductInput = Pick<Product, "storeId" | "name" | "sku" | "barcode" | "unitCost" | "vatRate">;
 
 export function upsertProduct(tenantId: string, input: ProductInput, id?: string): Product {
@@ -114,17 +140,20 @@ export function upsertProduct(tenantId: string, input: ProductInput, id?: string
     };
     return { ...db, products: [...db.products, result] };
   });
+  markProductDirty(tenantId, result.id, result.updatedAt);
   return result;
 }
 
 export function setUnitCost(tenantId: string, productId: string, unitCost: number | null) {
+  const updatedAt = nowISO();
   writeDB((db) => {
     assertOwned(db.products, tenantId, productId);
     return {
       ...db,
-      products: db.products.map((p) => (p.id === productId ? { ...p, unitCost, updatedAt: nowISO() } : p)),
+      products: db.products.map((p) => (p.id === productId ? { ...p, unitCost, updatedAt } : p)),
     };
   });
+  markProductDirty(tenantId, productId, updatedAt);
 }
 
 export function deleteProduct(tenantId: string, productId: string) {
