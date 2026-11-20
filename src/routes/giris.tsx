@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandMark } from "@/components/app/BrandMark";
 import { Field } from "@/components/app/ui-bits";
-import { currentSession, signIn, signUp } from "@/lib/data/auth";
+import { restoreSession, signIn, signUp } from "@/lib/data/auth";
 import { signInSchema, signUpSchema, toFieldErrors, type FieldErrors } from "@/lib/domain/schemas";
 
 export const Route = createFileRoute("/giris")({
@@ -53,7 +53,17 @@ function AuthPage() {
   };
 
   useEffect(() => {
-    if (currentSession()) go();
+    let active = true;
+    void restoreSession()
+      .then((session) => {
+        if (active && session) go();
+      })
+      .catch((err) => {
+        if (active) setErrors({ _form: (err as Error).message });
+      });
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -82,8 +92,16 @@ function AuthPage() {
     setErrors({});
     setBusy(true);
     try {
-      await signUp(parsed.data);
-      toast.success("Hesabınız oluşturuldu");
+      const result = await signUp(parsed.data);
+      if (result.confirmationRequired || !result.session) {
+        setTab("signin");
+        setErrors({
+          _form: "Hesabınız oluşturuldu. Giriş yapmadan önce e-posta adresinize gelen doğrulama bağlantısına tıklayın.",
+        });
+        toast.info("E-posta doğrulaması bekleniyor");
+        return;
+      }
+      toast.success("Hesabınız güvenli şekilde oluşturuldu");
       navigate({ to: "/genel-bakis", replace: true });
     } catch (err) {
       setErrors({ _form: (err as Error).message });
@@ -163,10 +181,10 @@ function AuthPage() {
             </TabsContent>
           </Tabs>
         </div>
-        <p className="mt-4 flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground">
-          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-          Prototip modu: hesabınız ve verileriniz şimdilik yalnızca bu tarayıcıda saklanır. Sunucu tarafı
-          oturum ve veritabanı, onayınızla etkinleştirilecek.
+        <p className="mt-4 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0 text-primary" />
+          Hesap ve oturum Supabase üzerinden güvenli şekilde doğrulanır. Önceden bu tarayıcıya kaydedilmiş
+          işletme kayıtlarınız korunur; buluta aktarım ayrı bir adımda yapılır.
         </p>
       </div>
     </div>

@@ -4,13 +4,19 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { FiltersProvider } from "@/components/app/filters";
-import { currentSession } from "@/lib/data/auth";
+import { restoreSession } from "@/lib/data/auth";
 
 export const Route = createFileRoute("/_panel")({
-  // Prototype session lives in browser storage, which the server cannot read.
+  // Supabase client session is currently browser-managed; validate it before rendering this area.
   ssr: false,
-  beforeLoad: ({ location }) => {
-    if (!currentSession()) {
+  beforeLoad: async ({ location }) => {
+    let session = null;
+    try {
+      session = await restoreSession();
+    } catch (error) {
+      console.error("[Auth] Session validation failed", error);
+    }
+    if (!session) {
       throw redirect({ to: "/giris", search: { redirect: location.href } });
     }
   },
@@ -30,7 +36,7 @@ function PanelLayout() {
               <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
                 <Info className="size-3.5 shrink-0 text-warning" />
                 <span className="truncate">
-                  Prototip modu · veriler bu tarayıcıda saklanır · pazaryeri bağlantısı yok
+                  Hesap Supabase ile doğrulanıyor · eski işletme kayıtları bu tarayıcıda korunuyor
                 </span>
               </p>
             </header>
