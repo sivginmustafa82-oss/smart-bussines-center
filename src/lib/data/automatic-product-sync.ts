@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Product } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
-import { clearPendingProductEdits, getPendingProductEdits, scoped } from "./repo";
+import { clearPendingProductEdits, getPendingProductEdits, persistCloudIdMap, scoped } from "./repo";
 
 type Row = Record<string, any>;
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
@@ -156,7 +156,7 @@ export async function syncProductsAutomatically(): Promise<void> {
     source: "manual",
   }));
 
-  window.localStorage.setItem(mapKey, JSON.stringify(idMap));
+  idMap = persistCloudIdMap(tenantId, idMap);
   if (productRows.length) {
     const { error } = await supabase.from("products").upsert(productRows, { onConflict: "id" });
     if (error) throw new Error("Ürün otomatik gönderilemedi: " + error.message);
