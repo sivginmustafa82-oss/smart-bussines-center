@@ -114,7 +114,11 @@ export async function syncProductsAutomatically(): Promise<void> {
       throw new Error("Ürünün mağaza bulut eşlemesi bulunamadı. İlk tam bulut eşitlemesini bir kez manuel yapın.");
     }
     if (product.unitCost === null) {
-      throw new Error("Ürün maliyetini silme/değiştirme işlemi otomatik eşitlemede henüz desteklenmiyor. Veri korunması için bekletildi.");
+      const remoteProductId = idMap["product:" + product.id] ?? product.id;
+      const remoteVariant = variantByProduct.get(remoteProductId);
+      if (remoteVariant && latestCostByVariant.has(remoteVariant.id)) {
+        throw new Error("Bu ürünün bulutta kayıtlı eski maliyeti var. Maliyet silme işlemi veri kaybını önlemek için otomatik eşitlemede bekletildi.");
+      }
     }
     storeIdMap.set(product.storeId, storeCloudId);
   }
@@ -139,7 +143,7 @@ export async function syncProductsAutomatically(): Promise<void> {
     vat_rate: product.vatRate,
     currency: "TRY",
   }));
-  const costRows = upload.map((product) => ({
+  const costRows = upload.filter((product) => product.unitCost !== null).map((product) => ({
     id: ensureCloudId(idMap, "cost", product.id + ":" + product.updatedAt),
     organization_id: orgId,
     variant_id: ensureCloudId(idMap, "variant", product.id),
@@ -155,8 +159,10 @@ export async function syncProductsAutomatically(): Promise<void> {
     if (error) throw new Error("Ürün otomatik gönderilemedi: " + error.message);
     const { error: variantError } = await supabase.from("product_variants").upsert(variantRows, { onConflict: "id" });
     if (variantError) throw new Error("Ürün varyantı otomatik gönderilemedi: " + variantError.message);
-    const { error: costError } = await supabase.from("product_costs").upsert(costRows, { onConflict: "id", ignoreDuplicates: true });
-    if (costError) throw new Error("Ürün maliyeti otomatik gönderilemedi: " + costError.message);
+    if (costRows.length) {
+      const { error: costError } = await supabase.from("product_costs").upsert(costRows, { onConflict: "id", ignoreDuplicates: true });
+      if (costError) throw new Error("Ürün maliyeti otomatik gönderilemedi: " + costError.message);
+    }
     for (const product of upload) uploaded[product.id] = product.updatedAt;
     clearPendingProductEdits(tenantId, uploaded);
   }
