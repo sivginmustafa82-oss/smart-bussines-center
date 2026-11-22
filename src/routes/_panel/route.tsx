@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app/AppSidebar";
 import { FiltersProvider } from "@/components/app/filters";
 import { restoreSession } from "@/lib/data/auth";
 import { startAutomaticProductSync } from "@/lib/data/automatic-product-sync";
+import { startAutomaticStoreSync } from "@/lib/data/automatic-store-sync";
 
 export const Route = createFileRoute("/_panel")({
   // Supabase client session is currently browser-managed; validate it before rendering this area.
@@ -26,7 +27,14 @@ export const Route = createFileRoute("/_panel")({
 });
 
 function PanelLayout() {
-  useEffect(() => startAutomaticProductSync(), []);
+  useEffect(() => {
+    const stopProductSync = startAutomaticProductSync();
+    const stopStoreSync = startAutomaticStoreSync();
+    return () => {
+      stopProductSync();
+      stopStoreSync();
+    };
+  }, []);
 
   return (
     <SidebarProvider>
