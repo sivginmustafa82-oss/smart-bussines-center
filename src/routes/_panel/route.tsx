@@ -40,7 +40,7 @@ function PanelLayout() {
               <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
                 <Info className="size-3.5 shrink-0 text-warning" />
                 <span className="truncate">
-                  Ürünler otomatik eşitleniyor · diğer kayıtlar için tam bulut eşitlemesini kullanın
+                  İlk tam eşitlemeden sonra ürünler otomatik eşitlenir · diğer kayıtlar için tam bulut eşitlemesini kullanın
                 </span>
               </p>
             </header>
