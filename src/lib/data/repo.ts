@@ -195,6 +195,34 @@ export function deleteProduct(tenantId: string, productId: string) {
   });
 }
 
+
+/* ---------- record sync dirty markers ---------- */
+const RECORD_DIRTY_KEY = "sbc:v1:pending-record-edits:";
+type SyncRecordKind = "order" | "expense" | "reconciliation";
+function readPendingRecordEdits(tenantId: string): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(RECORD_DIRTY_KEY + tenantId);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch { return {}; }
+}
+function markRecordDirty(tenantId: string, kind: SyncRecordKind, recordId: string) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingRecordEdits(tenantId);
+  pending[kind + ":" + recordId] = nowISO();
+  window.localStorage.setItem(RECORD_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+export function getPendingRecordEdits(tenantId: string): Record<string, string> {
+  return readPendingRecordEdits(tenantId);
+}
+export function clearPendingRecordEdits(tenantId: string, uploaded: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingRecordEdits(tenantId);
+  for (const [id, version] of Object.entries(uploaded)) {
+    if (pending[id] === version) delete pending[id];
+  }
+  window.localStorage.setItem(RECORD_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+
 /* ---------- Order records ---------- */
 
 export type OrderInput = Omit<OrderRecord, "id" | "tenantId" | "source" | "verified" | "createdAt">;
@@ -213,6 +241,7 @@ export function upsertOrder(tenantId: string, input: OrderInput, id?: string): O
     result = { id: newId(), tenantId, ...input, source: "manual", verified: false, createdAt: nowISO() };
     return { ...db, orders: [...db.orders, result] };
   });
+  markRecordDirty(tenantId, "order", result.id);
   return result;
 }
 
@@ -239,6 +268,7 @@ export function upsertExpense(tenantId: string, input: ExpenseInput, id?: string
     result = { id: newId(), tenantId, ...input, source: "manual", createdAt: nowISO() };
     return { ...db, expenses: [...db.expenses, result] };
   });
+  markRecordDirty(tenantId, "expense", result.id);
   return result;
 }
 
@@ -278,6 +308,7 @@ export function saveReconciliation(
     };
     return { ...db, reconciliations: [...db.reconciliations, result] };
   });
+  markRecordDirty(tenantId, "reconciliation", result.id);
   return result;
 }
 
