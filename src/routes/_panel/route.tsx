@@ -1,10 +1,12 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Info } from "lucide-react";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { FiltersProvider } from "@/components/app/filters";
 import { restoreSession } from "@/lib/data/auth";
+import { startAutomaticProductSync } from "@/lib/data/automatic-product-sync";
 
 export const Route = createFileRoute("/_panel")({
   // Supabase client session is currently browser-managed; validate it before rendering this area.
@@ -24,6 +26,8 @@ export const Route = createFileRoute("/_panel")({
 });
 
 function PanelLayout() {
+  useEffect(() => startAutomaticProductSync(), []);
+
   return (
     <SidebarProvider>
       <FiltersProvider>
@@ -36,7 +40,7 @@ function PanelLayout() {
               <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
                 <Info className="size-3.5 shrink-0 text-warning" />
                 <span className="truncate">
-                  Hesap Supabase ile doğrulanıyor · eski işletme kayıtları bu tarayıcıda korunuyor
+                  Ürünler otomatik eşitleniyor · diğer kayıtlar için tam bulut eşitlemesini kullanın
                 </span>
               </p>
             </header>
