@@ -25,7 +25,8 @@ function getIdMap(tenantId: string): Record<string, string> {
 }
 
 function saveIdMap(tenantId: string, map: Record<string, string>) {
-  window.localStorage.setItem(MAP_PREFIX + tenantId, JSON.stringify(map));
+  const current = getIdMap(tenantId);
+  window.localStorage.setItem(MAP_PREFIX + tenantId, JSON.stringify({ ...current, ...map }));
 }
 
 function cloudId(map: Record<string, string>, kind: string, localId: string): string {
