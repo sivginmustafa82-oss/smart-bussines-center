@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Store } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
-import { clearPendingStoreEdits, getPendingStoreEdits, scoped } from "./repo";
+import { clearPendingStoreEdits, getPendingStoreEdits, persistCloudIdMap, scoped } from "./repo";
 
 type Row = Record<string, any>;
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
@@ -70,7 +70,7 @@ export async function syncStoresAutomatically(): Promise<void> {
     created_at: store.createdAt,
   }));
 
-  window.localStorage.setItem(mapKey, JSON.stringify(idMap));
+  idMap = persistCloudIdMap(tenantId, idMap);
   for (let offset = 0; offset < rows.length; offset += 200) {
     const { error } = await supabase.from("stores").upsert(rows.slice(offset, offset + 200), { onConflict: "id" });
     if (error) throw new Error("Mağaza otomatik eşitlenemedi: " + error.message);
