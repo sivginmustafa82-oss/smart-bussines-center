@@ -8,6 +8,7 @@ import { FiltersProvider } from "@/components/app/filters";
 import { restoreSession } from "@/lib/data/auth";
 import { startAutomaticProductSync } from "@/lib/data/automatic-product-sync";
 import { startAutomaticStoreSync } from "@/lib/data/automatic-store-sync";
+import { startAutomaticRecordSync } from "@/lib/data/automatic-record-sync";
 
 export const Route = createFileRoute("/_panel")({
   // Supabase client session is currently browser-managed; validate it before rendering this area.
@@ -30,9 +31,11 @@ function PanelLayout() {
   useEffect(() => {
     const stopProductSync = startAutomaticProductSync();
     const stopStoreSync = startAutomaticStoreSync();
+    const stopRecordSync = startAutomaticRecordSync();
     return () => {
       stopProductSync();
       stopStoreSync();
+      stopRecordSync();
     };
   }, []);
 
@@ -48,7 +51,7 @@ function PanelLayout() {
               <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
                 <Info className="size-3.5 shrink-0 text-warning" />
                 <span className="truncate">
-                  İlk tam eşitlemeden sonra mağazalar ve ürünler otomatik eşitlenir · diğer kayıtlar için tam bulut eşitlemesini kullanın
+                  İlk tam eşitlemeden sonra mağazalar, ürünler, siparişler, giderler ve mutabakatlar otomatik eşitlenir
                 </span>
               </p>
             </header>
