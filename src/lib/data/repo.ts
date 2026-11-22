@@ -196,6 +196,16 @@ export function deleteProduct(tenantId: string, productId: string) {
 }
 
 
+export function persistCloudIdMap(tenantId: string, map: Record<string, string>): Record<string, string> {
+  if (typeof window === "undefined") return map;
+  const key = "sbc:v1:cloud-id-map:" + tenantId;
+  let current: Record<string, string> = {};
+  try { current = JSON.parse(window.localStorage.getItem(key) || "{}") as Record<string, string>; } catch { current = {}; }
+  const merged = { ...current, ...map };
+  window.localStorage.setItem(key, JSON.stringify(merged));
+  return merged;
+}
+
 /* ---------- record sync dirty markers ---------- */
 const RECORD_DIRTY_KEY = "sbc:v1:pending-record-edits:";
 type SyncRecordKind = "order" | "expense" | "reconciliation";
