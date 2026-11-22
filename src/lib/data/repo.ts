@@ -268,7 +268,7 @@ export function upsertExpense(tenantId: string, input: ExpenseInput, id?: string
     result = { id: newId(), tenantId, ...input, source: "manual", createdAt: nowISO() };
     return { ...db, expenses: [...db.expenses, result] };
   });
-  markRecordDirty(tenantId, "expense", result.id);
+  if (result.source === "manual") markRecordDirty(tenantId, "expense", result.id);
   return result;
 }
 
@@ -308,7 +308,7 @@ export function saveReconciliation(
     };
     return { ...db, reconciliations: [...db.reconciliations, result] };
   });
-  markRecordDirty(tenantId, "reconciliation", result.id);
+  if (result.source === "manual") markRecordDirty(tenantId, "reconciliation", result.id);
   return result;
 }
 
