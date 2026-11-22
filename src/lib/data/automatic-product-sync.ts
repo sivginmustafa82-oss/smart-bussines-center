@@ -38,6 +38,9 @@ export async function syncProductsAutomatically(): Promise<void> {
 
   const tenantId = session.tenantId;
   const orgId = session.cloudOrganizationId;
+  // The explicit first full sync establishes stable local/cloud ID mappings.
+  // Do not auto-pull into an uninitialized browser, where it could create duplicate local IDs.
+  if (!window.localStorage.getItem("sbc:v1:cloud-sync:" + tenantId)) return;
   const pending = getPendingProductEdits(tenantId);
   const localProductsBefore = scoped(readDB(), tenantId).products;
   const localVersions = new Map(localProductsBefore.map((product) => [product.id, product.updatedAt]));
