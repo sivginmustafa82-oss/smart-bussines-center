@@ -197,11 +197,11 @@ export function startAutomaticProductSync(): () => void {
     debounce = setTimeout(() => {
       const session = readSession();
       if (session && Object.keys(getPendingProductEdits(session.tenantId)).length) run();
-    }, 900);
+    }, 250);
   };
 
   const unsubscribe = subscribe(scheduleDirtyPush);
-  const interval = window.setInterval(run, 30_000);
+  const interval = window.setInterval(run, 5_000);
   const onOnline = () => run();
   const onVisibility = () => { if (document.visibilityState === "visible") run(); };
   window.addEventListener("online", onOnline);
