@@ -51,6 +51,31 @@ function assertOwned<T extends { id: string; tenantId: string }>(rows: T[], tena
 
 /* ---------- Stores ---------- */
 
+const STORE_DIRTY_KEY = "sbc:v1:pending-store-edits:";
+function readPendingStoreEdits(tenantId: string): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(STORE_DIRTY_KEY + tenantId);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch { return {}; }
+}
+function markStoreDirty(tenantId: string, storeId: string) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingStoreEdits(tenantId);
+  pending[storeId] = nowISO();
+  window.localStorage.setItem(STORE_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+export function getPendingStoreEdits(tenantId: string): Record<string, string> {
+  return readPendingStoreEdits(tenantId);
+}
+export function clearPendingStoreEdits(tenantId: string, uploaded: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  const pending = readPendingStoreEdits(tenantId);
+  for (const [id, updatedAt] of Object.entries(uploaded)) {
+    if (pending[id] === updatedAt) delete pending[id];
+  }
+  window.localStorage.setItem(STORE_DIRTY_KEY + tenantId, JSON.stringify(pending));
+}
+
 export function createStore(tenantId: string, input: { name: string; marketplace: "trendyol" }): Store {
   const store: Store = {
     id: newId(),
@@ -61,6 +86,7 @@ export function createStore(tenantId: string, input: { name: string; marketplace
     createdAt: nowISO(),
   };
   writeDB((db) => ({ ...db, stores: [...db.stores, store] }));
+  markStoreDirty(tenantId, store.id);
   return store;
 }
 
@@ -69,6 +95,7 @@ export function renameStore(tenantId: string, storeId: string, name: string) {
     assertStore(db, tenantId, storeId);
     return { ...db, stores: db.stores.map((s) => (s.id === storeId ? { ...s, name } : s)) };
   });
+  markStoreDirty(tenantId, storeId);
 }
 
 /** Deletes a store and everything that belongs to it. */
