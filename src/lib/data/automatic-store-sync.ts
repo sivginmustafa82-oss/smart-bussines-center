@@ -111,7 +111,7 @@ export async function syncStoresAutomatically(): Promise<void> {
       stores: [...db.stores.filter((store) => store.tenantId !== tenantId), ...next],
     }));
   }
-  window.localStorage.setItem(mapKey, JSON.stringify(idMap));
+  persistCloudIdMap(tenantId, idMap);
   window.localStorage.setItem(
     "sbc:v1:auto-store-sync:" + tenantId,
     JSON.stringify({ syncedAt: new Date().toISOString(), pulled: incoming.length, pushed: upload.length }),
