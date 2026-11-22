@@ -206,6 +206,28 @@ export function startAutomaticProductSync(): () => void {
   const onVisibility = () => { if (document.visibilityState === "visible") run(); };
   window.addEventListener("online", onOnline);
   document.addEventListener("visibilitychange", onVisibility);
+
+  // Realtime wakes this device as soon as another device changes a product.
+  // The five-second poll remains as a fallback for sleeping/offline mobile browsers.
+  const session = readSession();
+  const realtimeChannel = session?.cloudOrganizationId && session.authProvider === "supabase"
+    ? supabase
+        .channel("auto-product-sync:" + session.tenantId)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "products",
+            filter: "organization_id=eq." + session.cloudOrganizationId,
+          },
+          () => run(),
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") run();
+        })
+    : null;
+
   run();
 
   return () => {
@@ -216,5 +238,6 @@ export function startAutomaticProductSync(): () => void {
     window.clearInterval(interval);
     window.removeEventListener("online", onOnline);
     document.removeEventListener("visibilitychange", onVisibility);
+    if (realtimeChannel) void supabase.removeChannel(realtimeChannel);
   };
 }
