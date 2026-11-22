@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Expense, OrderRecord, ReconciliationEntry } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
-import { clearPendingRecordEdits, getPendingRecordEdits, scoped } from "./repo";
+import { clearPendingRecordEdits, getPendingRecordEdits, persistCloudIdMap, scoped } from "./repo";
 
 type Row = Record<string, any>;
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
@@ -109,7 +109,7 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
   for (const row of reconciliationRows) {
     if (!row.store_id) throw new Error("Mutabakatın mağaza bulut eşlemesi bulunamadı.");
   }
-  window.localStorage.setItem(MAP_PREFIX + tenantId, JSON.stringify(map));
+  persistCloudIdMap(tenantId, map);
 
   for (let offset = 0; offset < orderRows.length; offset += 100) {
     const batch = orderRows.slice(offset, offset + 100);
@@ -180,7 +180,7 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
   for (const row of incomingOrders) if (!map["order:" + row.id]) map["order:" + row.id] = remoteOrders.find((r) => localIdFor("order", r.id, map) === row.id)?.id ?? row.id;
   for (const row of incomingExpenses) if (!map["expense:" + row.id]) map["expense:" + row.id] = remoteExpenses.find((r) => localIdFor("expense", r.id, map) === row.id)?.id ?? row.id;
   for (const row of incomingReconciliations) if (!map["reconciliation:" + row.id]) map["reconciliation:" + row.id] = remoteReconciliations.find((r) => localIdFor("reconciliation", r.id, map) === row.id)?.id ?? row.id;
-  window.localStorage.setItem(MAP_PREFIX + tenantId, JSON.stringify(map));
+  persistCloudIdMap(tenantId, map);
 
   const merge = <T extends { id: string }>(localRows: T[], remoteRows: T[], kind: string): T[] => {
     const byId = new Map(localRows.map((row) => [row.id, row]));
