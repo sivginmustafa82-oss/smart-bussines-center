@@ -17,9 +17,6 @@ export const PRESET_LABELS: Record<Preset, string> = {
   custom: "Özel aralık",
 };
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
 export function presetRange(p: Preset, custom: { from: string; to: string }): { from: string | null; to: string | null } {
   const today = todayISO();
   const [year, month, day] = today.split("-").map(Number);
