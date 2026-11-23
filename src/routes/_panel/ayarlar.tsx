@@ -27,6 +27,8 @@ import { type CloudImportResult } from "@/lib/data/cloud-import";
 import { syncWorkspaceWithCloud, type CloudSyncResult } from "@/lib/data/cloud-sync";
 import { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
+import { supabase } from "@/integrations/supabase/client";
+import type { Store } from "@/lib/domain/types";
 
 export const Route = createFileRoute("/_panel/ayarlar")({
   head: () => ({
@@ -197,6 +199,8 @@ function Settings() {
           </p>
         </Panel>
 
+        <TrendyolConnectionPanel stores={ws.stores} tenantId={ws.tenantId} />
+
         <Panel
           title="Bulut eşitleme"
           description="Buluttaki kayıtları bu cihaza alır, bu cihazdaki yeni kayıtları da buluta gönderir. Hiçbir kayıt otomatik silinmez."
@@ -297,5 +301,167 @@ function Settings() {
         </Panel>
       </div>
     </>
+  );
+}
+
+
+function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenantId: string }) {
+  const trendyolStores = stores.filter((store) => store.marketplace === "trendyol");
+  const selectedStore = trendyolStores[0];
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function connect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSuccess(null);
+    setError(null);
+
+    const store = trendyolStores.find((item) => item.id === (selectedStoreId || selectedStore?.id));
+    if (!store) {
+      setError("Önce bir Trendyol mağazası oluşturun.");
+      return;
+    }
+    if (!/^\d{3,20}$/.test(supplierId.trim())) {
+      setError("Satıcı ID / Supplier ID yalnızca rakamlardan oluşmalıdır.");
+      return;
+    }
+    if (!apiKey.trim() || !apiSecret.trim()) {
+      setError("API Key ve API Secret alanlarını doldurun.");
+      return;
+    }
+
+    let cloudStoreId = store.id;
+    try {
+      const mapRaw = window.localStorage.getItem("sbc:v1:cloud-id-map:" + tenantId);
+      const map = mapRaw ? (JSON.parse(mapRaw) as Record<string, string>) : {};
+      cloudStoreId = map["store:" + store.id] || store.id;
+    } catch {
+      setError("Mağaza bulut eşlemesi okunamadı. Önce bulut eşitlemesini çalıştırın.");
+      return;
+    }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudStoreId)) {
+      setError("Mağaza henüz buluta aktarılmamış. Önce “Şimdi bulutla eşitle” düğmesine basın.");
+      return;
+    }
+
+    setIsConnecting(true);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
+      }
+
+      const { data, error: functionError } = await supabase.functions.invoke("smart-business-api", {
+        body: {
+          action: "connect_trendyol",
+          store_id: cloudStoreId,
+          supplier_id: supplierId.trim(),
+          api_key: apiKey.trim(),
+          api_secret: apiSecret.trim(),
+        },
+        headers: { Authorization: "Bearer " + sessionData.session.access_token },
+      });
+
+      if (functionError) throw new Error(functionError.message);
+      if (!data?.ok) throw new Error(data?.error || "Trendyol bağlantısı doğrulanamadı.");
+
+      setSuccess(
+        "Bağlantı doğrulandı ve API bilgileri şifrelenerek kaydedildi. Test sorgusunda " +
+          String(data.sample_packages ?? 0) +
+          " paket bulundu.",
+      );
+      setApiKey("");
+      setApiSecret("");
+      toast.success("Trendyol bağlantısı başarıyla kaydedildi");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Trendyol bağlantısı kurulamadı.";
+      setError(message);
+      toast.error("Trendyol bağlantısı kurulamadı");
+    } finally {
+      setIsConnecting(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="Trendyol API bağlantısı"
+      description="API bilgileri önce Trendyol Order V2 servisiyle test edilir. Başarılıysa sunucu tarafında şifrelenerek saklanır; tarayıcıya veya yerel kayıtlara yazılmaz."
+      className="lg:col-span-2"
+    >
+      {trendyolStores.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Henüz Trendyol mağazası yok. Önce Mağazalar bölümünden Trendyol mağazanızı ekleyin.
+        </p>
+      ) : (
+        <form onSubmit={(event) => void connect(event)} className="grid gap-4 md:grid-cols-2" noValidate>
+          <Field label="Trendyol mağazası" htmlFor="ty-store">
+            <select
+              id="ty-store"
+              value={selectedStoreId || selectedStore?.id || ""}
+              onChange={(event) => setSelectedStoreId(event.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {trendyolStores.map((store) => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Satıcı ID / Supplier ID" htmlFor="ty-supplier-id" hint="Trendyol Satıcı Paneli → Hesap Bilgilerim → Entegrasyon Bilgileri">
+            <Input
+              id="ty-supplier-id"
+              value={supplierId}
+              onChange={(event) => setSupplierId(event.target.value)}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="Örn. 123456"
+            />
+          </Field>
+          <Field label="API Key" htmlFor="ty-api-key">
+            <Input
+              id="ty-api-key"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Trendyol API Key"
+            />
+          </Field>
+          <Field label="API Secret" htmlFor="ty-api-secret">
+            <Input
+              id="ty-api-secret"
+              type="password"
+              value={apiSecret}
+              onChange={(event) => setApiSecret(event.target.value)}
+              autoComplete="new-password"
+              placeholder="Trendyol API Secret"
+            />
+          </Field>
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+            <Button type="submit" disabled={isConnecting}>
+              {isConnecting ? <Loader2 className="animate-spin" /> : <PlugZap />}
+              {isConnecting ? "Bağlantı test ediliyor…" : "Bağlantıyı test et ve güvenli kaydet"}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Bilgiler yalnızca bu işlem sırasında gönderilir; API Secret ekranda tekrar gösterilmez.
+            </span>
+          </div>
+          {error && (
+            <p className="md:col-span-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          {success && (
+            <p className="md:col-span-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success" role="status">
+              {success}
+            </p>
+          )}
+        </form>
+      )}
+    </Panel>
   );
 }
