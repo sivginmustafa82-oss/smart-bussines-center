@@ -125,23 +125,25 @@ function Products() {
         title="Ürünler ve maliyetler"
         description="Birim maliyet, kârlılıkta 'Ürün maliyeti' satırını oluşturur. Boş bırakılan maliyet 'bilinmiyor' olarak işaretlenir."
         actions={
-          <Button variant="outline" onClick={() => document.getElementById("product-cost-import")?.click()}>
-            Excel maliyet aktar
-          </Button>
-          <input
-            id="product-cost-import"
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={(e) => {
-              void importCosts(e.target.files?.[0]);
-              e.currentTarget.value = "";
-            }}
-          />
-          <Button onClick={() => setEditing("new")}>
-            <Plus /> Ürün ekle
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => document.getElementById("product-cost-import")?.click()}>
+              Excel maliyet aktar
+            </Button>
+            <Button onClick={() => setEditing("new")}>
+              <Plus /> Ürün ekle
+            </Button>
+          </div>
         }
+      />
+      <input
+        id="product-cost-import"
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => {
+          void importCosts(e.target.files?.[0]);
+          e.currentTarget.value = "";
+        }}
       />
 
       {ws.products.length === 0 ? (
