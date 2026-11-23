@@ -337,7 +337,9 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{
     packages_received: number; lines_imported: number; sale_lines: number;
-    cancellation_lines: number; return_lines: number; matched_products: number; unmatched_products: number;
+    cancellation_lines: number; return_lines: number; return_gross_amount?: number;
+    return_discount_matched?: number; return_discount_unmatched_lines?: number; claims_received?: number;
+    matched_products: number; unmatched_products: number;
     start_date?: string; end_date?: string; query_start?: string; query_end?: string;
   } | null>(null);
   // Istanbul calendar days; the server converts them to 00:00:00.000 – 23:59:59.999 local time.
@@ -627,7 +629,8 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
                 <>Aralık: {syncResult.query_start ?? syncResult.start_date} – {syncResult.query_end ?? syncResult.end_date}. </>
               )}
               {syncResult.packages_received} paket incelendi; {syncResult.lines_imported} sipariş satırı aktarıldı.
-              {" "}Satış: {syncResult.sale_lines}, iptal: {syncResult.cancellation_lines}, iade: {syncResult.return_lines}.
+              {" "}Satış: {syncResult.sale_lines}, iptal: {syncResult.cancellation_lines}, onaylı iade: {syncResult.return_lines} kalem ({(syncResult.return_gross_amount ?? 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL).
+              {" "}İadeye bağlı eşleşen indirim: {(syncResult.return_discount_matched ?? 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL; eşleşmeyen iade kalemi: {syncResult.return_discount_unmatched_lines ?? 0}.
               {" "}Ürün eşleşmesi: {syncResult.matched_products}; eşleşmeyen: {syncResult.unmatched_products}.
             </p>
           )}
