@@ -79,7 +79,7 @@ function Products() {
       const barcodeKey = headers.find((h) => ["barkod", "barcode"].includes(normalize(h)));
       const costKey = headers.find((h) => {
         const key = normalize(h);
-        return key.includes("maliyet") || (key.includes("hammadde") && key.includes("iscilik"));
+        return key.includes("hammadde") && key.includes("iscilik") && key.includes("maliyet");
       });
       if (!costKey || (!skuKey && !barcodeKey)) {
         throw new Error("Stok Kodu veya Barkod ve Hammadde + İşçilik Maliyeti (TL) sütunları gerekli");
