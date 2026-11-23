@@ -494,25 +494,25 @@ Deno.serve(async (req: Request) => {
   let claimsReceived = 0;
   let approvedReturnLines = 0;
   try {
-    const claimStart = (queryWindows[0]?.startDate ?? Date.now()) - 31 * 24 * 60 * 60 * 1000;
-    const claimEnd = queryWindows[queryWindows.length - 1]?.endDate ?? Date.now();
+    const claimWindows = trendyolQueryWindows(syncRange.from, syncRange.to, 13);
     const acceptedClaimItems: Array<{
       id: string; claimId: string; orderNumber: string; approvedAt: number;
       quantity: number; gross: number; barcode: string; merchantSku: string;
       productId: string | null; outboundPackageId: string; orderLineItemId: string;
     }> = [];
-    let claimPage = 0;
-    while (claimPage < 50) {
-      const claimUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/claims");
-      claimUrl.searchParams.set("startDate", String(claimStart));
-      claimUrl.searchParams.set("endDate", String(claimEnd));
-      claimUrl.searchParams.set("claimItemStatus", "Accepted");
-      claimUrl.searchParams.set("page", String(claimPage));
-      claimUrl.searchParams.set("size", "200");
-      const result = await fetchJson(claimUrl.toString(), trendyolHeaders);
-      const content = Array.isArray(result?.content) ? result.content : [];
-      claimsReceived += content.length;
-      for (const claim of content) {
+    for (const claimWindow of claimWindows) {
+      let claimPage = 0;
+      while (claimPage < 50) {
+        const claimUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/claims");
+        claimUrl.searchParams.set("startDate", String(claimWindow.startDate));
+        claimUrl.searchParams.set("endDate", String(claimWindow.endDate));
+        claimUrl.searchParams.set("claimItemStatus", "Accepted");
+        claimUrl.searchParams.set("page", String(claimPage));
+        claimUrl.searchParams.set("size", "200");
+        const result = await fetchJson(claimUrl.toString(), trendyolHeaders);
+        const content = Array.isArray(result?.content) ? result.content : [];
+        claimsReceived += content.length;
+        for (const claim of content) {
         const approvedAt = Number(claim?.lastModifiedDate ?? 0);
         if (!approvedAt || localDate(approvedAt) < syncRange.from || localDate(approvedAt) > syncRange.to) continue;
         const claimId = String(claim?.id ?? claim?.claimId ?? "");
@@ -544,9 +544,10 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
-      const totalPages = Math.max(1, Number(result?.totalPages ?? 1));
-      if (content.length < 200 || claimPage + 1 >= totalPages) break;
-      claimPage += 1;
+        const totalPages = Math.max(1, Number(result?.totalPages ?? 1));
+        if (content.length < 200 || claimPage + 1 >= totalPages) break;
+        claimPage += 1;
+      }
     }
 
     // Match each returned unit to its original sale line so its seller discount is reversed,
@@ -558,7 +559,7 @@ Deno.serve(async (req: Request) => {
       originalUrl.searchParams.set("store_id", "eq." + body.store_id);
       originalUrl.searchParams.set("record_type", "eq.sale");
       originalUrl.searchParams.set("order_number", "in.(" + orderNumbers.join(",") + ")");
-      originalUrl.searchParams.set("select", "order_number,quantity,discount_amount,coupon_amount,note");
+      originalUrl.searchParams.set("select", "order_number,quantity,gross_amount,discount_amount,coupon_amount,note");
       originalUrl.searchParams.set("limit", "1000");
       const originalResponse = await fetch(originalUrl, { headers: authHeaders });
       if (!originalResponse.ok) throw new Error("İade indirimi için asıl sipariş satırları okunamadı.");
@@ -584,11 +585,15 @@ Deno.serve(async (req: Request) => {
       const couponAmount = matchingSale
         ? Math.round((Number(matchingSale.coupon_amount ?? 0) * item.quantity / originalQuantity) * 100) / 100
         : 0;
+      const originalGrossPerUnit = matchingSale
+        ? Number(matchingSale.gross_amount ?? 0) / originalQuantity
+        : item.gross / item.quantity;
+      const returnGross = Math.round(originalGrossPerUnit * item.quantity * 100) / 100;
       const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + item.claimId + "|" + item.id);
       recordsById.set(stableId, {
         id: stableId, record_type: "return", order_number: item.orderNumber,
         record_date: localDate(item.approvedAt), product_id: item.productId, quantity: item.quantity,
-        gross_amount: item.gross, discount_amount: discountAmount, coupon_amount: couponAmount,
+        gross_amount: returnGross, discount_amount: discountAmount, coupon_amount: couponAmount,
         commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
         note: ("Onaylı Trendyol iadesi | Talep:" + item.claimId + " | Kalem:" + item.id +
           " | Paket:" + item.outboundPackageId + (item.barcode ? " | Barkod:" + item.barcode : "") +
