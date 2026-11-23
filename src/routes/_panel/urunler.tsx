@@ -73,7 +73,7 @@ function Products() {
       if (!firstSheet) throw new Error("Excel dosyasında sayfa bulunamadı");
       const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" });
       if (!data.length) throw new Error("Excel dosyasında satır bulunamadı");
-      const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase("tr").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
+      const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const headers = Object.keys(data[0]);
       const skuKey = headers.find((h) => ["sku", "stok kodu", "stok kodu (sku)"].includes(normalize(h)));
       const barcodeKey = headers.find((h) => ["barkod", "barcode"].includes(normalize(h)));
