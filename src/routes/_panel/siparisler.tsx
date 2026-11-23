@@ -88,12 +88,14 @@ function Orders() {
         title="Sipariş, iade ve iptal kayıtları"
         description="Pazaryeri bağlantısı olmadığı için tüm kayıtlar manuel girilir ve 'Manuel' olarak işaretlenir."
         actions={
-          <Button variant="outline" onClick={exportExcel} disabled={rows.length === 0}>
-            Excel'e aktar
-          </Button>
-          <Button onClick={() => setEditing("new")}>
-            <Plus /> Kayıt ekle
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={exportExcel} disabled={rows.length === 0}>
+              Excel'e aktar
+            </Button>
+            <Button onClick={() => setEditing("new")}>
+              <Plus /> Kayıt ekle
+            </Button>
+          </div>
         }
       />
       <FilterBar stores={ws.stores} />
