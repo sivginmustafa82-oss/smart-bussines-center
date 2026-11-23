@@ -32,6 +32,7 @@ export const NAV_ITEMS = [
   { title: "Mağazalar", url: "/magazalar", icon: Store },
   { title: "Ürünler", url: "/urunler", icon: Package },
   { title: "Siparişler", url: "/siparisler", icon: ShoppingCart },
+  { title: "Mağaza Özeti", url: "/magaza-ozeti", icon: BarChart3 },
   { title: "Kârlılık", url: "/karlilik", icon: BarChart3 },
   { title: "Giderler", url: "/giderler", icon: Wallet },
   { title: "Raporlar", url: "/raporlar", icon: FileSpreadsheet },

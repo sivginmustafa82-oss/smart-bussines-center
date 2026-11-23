@@ -17,28 +17,28 @@ export const PRESET_LABELS: Record<Preset, string> = {
   custom: "Özel aralık",
 };
 
-const pad = (n: number) => String(n).padStart(2, "0");
-const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
 export function presetRange(p: Preset, custom: { from: string; to: string }): { from: string | null; to: string | null } {
-  const now = new Date();
+  const today = todayISO();
+  const [year, month, day] = today.split("-").map(Number);
+  const now = new Date(Date.UTC(year, month - 1, day));
+  const asISO = (d: Date) => d.toISOString().slice(0, 10);
   switch (p) {
     case "all":
       return { from: null, to: null };
     case "this_month":
-      return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: todayISO() };
+      return { from: asISO(new Date(Date.UTC(year, month - 1, 1))), to: today };
     case "last_month":
       return {
-        from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
-        to: iso(new Date(now.getFullYear(), now.getMonth(), 0)),
+        from: asISO(new Date(Date.UTC(year, month - 2, 1))),
+        to: asISO(new Date(Date.UTC(year, month - 1, 0))),
       };
     case "last_90": {
       const d = new Date(now);
-      d.setDate(d.getDate() - 89);
-      return { from: iso(d), to: todayISO() };
+      d.setUTCDate(d.getUTCDate() - 89);
+      return { from: asISO(d), to: today };
     }
     case "this_year":
-      return { from: `${now.getFullYear()}-01-01`, to: todayISO() };
+      return { from: `${year}-01-01`, to: today };
     case "custom":
       return { from: custom.from || null, to: custom.to || null };
   }

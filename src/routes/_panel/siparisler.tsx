@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent } from "react";
+import * as XLSX from "xlsx";
 import { Pencil, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import { useFilteredProfit } from "@/components/app/useProfit";
 import { EmptyState, Field, Money, PageHeader, SourceBadge } from "@/components/app/ui-bits";
 import { upsertOrder, deleteOrder } from "@/lib/data/repo";
 import { RECORD_TYPE_LABELS } from "@/lib/domain/labels";
+import { buildOrderExportRows, ORDER_EXPORT_COLUMNS } from "@/lib/domain/order-export";
 import { orderRecordSchema, toFieldErrors, type FieldErrors } from "@/lib/domain/schemas";
 import type { OrderRecord, Product, RecordType, Store } from "@/lib/domain/types";
 import { formatDate, todayISO } from "@/lib/format";
@@ -57,6 +59,17 @@ function Orders() {
     [records, tab],
   );
   const count = (t: RecordType) => records.filter((r) => r.type === t).length;
+  const exportExcel = () => {
+    const data = buildOrderExportRows(rows, ws.stores, ws.products);
+    const sheet = XLSX.utils.aoa_to_sheet([[...ORDER_EXPORT_COLUMNS], ...data]);
+    sheet["!cols"] = ORDER_EXPORT_COLUMNS.map((h, i) => ({
+      wch: Math.max(h.length + 2, ...data.slice(0, 100).map((row) => String(row[i] ?? "").length + 2), 12),
+    }));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "Siparişler");
+    XLSX.writeFile(book, `smart-business-siparisler-${todayISO()}.xlsx`);
+    toast.success(`${data.length} kayıt Excel'e aktarıldı`);
+  };
   const storeName = (id: string) => ws.stores.find((s) => s.id === id)?.name ?? "—";
   const product = (id: string | null) => (id ? ws.products.find((p) => p.id === id) : undefined);
 
@@ -75,9 +88,14 @@ function Orders() {
         title="Sipariş, iade ve iptal kayıtları"
         description="Pazaryeri bağlantısı olmadığı için tüm kayıtlar manuel girilir ve 'Manuel' olarak işaretlenir."
         actions={
-          <Button onClick={() => setEditing("new")}>
-            <Plus /> Kayıt ekle
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={exportExcel} disabled={rows.length === 0}>
+              Excel'e aktar
+            </Button>
+            <Button onClick={() => setEditing("new")}>
+              <Plus /> Kayıt ekle
+            </Button>
+          </div>
         }
       />
       <FilterBar stores={ws.stores} />

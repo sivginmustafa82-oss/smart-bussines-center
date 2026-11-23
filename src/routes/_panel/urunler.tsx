@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent } from "react";
+import * as XLSX from "xlsx";
 import { Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ import { deleteProduct, setUnitCost, upsertProduct } from "@/lib/data/repo";
 import { VAT_RATES } from "@/lib/domain/labels";
 import { optionalMoneyField, productSchema, toFieldErrors, type FieldErrors } from "@/lib/domain/schemas";
 import type { Product } from "@/lib/domain/types";
-import { formatNumber } from "@/lib/format";
+import { formatNumber, parseAmount } from "@/lib/format";
 
 export const Route = createFileRoute("/_panel/urunler")({
   head: () => ({
@@ -64,6 +65,51 @@ function Products() {
   const missing = ws.products.filter((p) => p.unitCost == null).length;
   const storeName = (id: string) => ws.stores.find((s) => s.id === id)?.name ?? "—";
 
+  async function importCosts(file?: File) {
+    if (!file) return;
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error("Excel dosyasında sayfa bulunamadı");
+      const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" });
+      if (!data.length) throw new Error("Excel dosyasında satır bulunamadı");
+      const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase("tr").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const headers = Object.keys(data[0]);
+      const skuKey = headers.find((h) => ["sku", "stok kodu", "stok kodu (sku)"].includes(normalize(h)));
+      const barcodeKey = headers.find((h) => ["barkod", "barcode"].includes(normalize(h)));
+      const costKey = headers.find((h) => {
+        const key = normalize(h);
+        return key.includes("maliyet") || (key.includes("hammadde") && key.includes("iscilik"));
+      });
+      if (!costKey || (!skuKey && !barcodeKey)) {
+        throw new Error("Stok Kodu veya Barkod ve Hammadde + İşçilik Maliyeti (TL) sütunları gerekli");
+      }
+      const bySku = new Map(ws.products.map((p) => [normalize(p.sku), p]));
+      const byBarcode = new Map(ws.products.filter((p) => p.barcode).map((p) => [normalize(p.barcode), p]));
+      const updates: { id: string; name: string; cost: number }[] = [];
+      for (const row of data) {
+        const sku = skuKey ? normalize(row[skuKey]) : "";
+        const barcode = barcodeKey ? normalize(row[barcodeKey]) : "";
+        const product = (barcode && byBarcode.get(barcode)) || (sku && bySku.get(sku));
+        if (!product) continue;
+        const raw = row[costKey];
+        const cost = typeof raw === "number" ? raw : parseAmount(String(raw));
+        if (Number.isFinite(cost) && cost >= 0) updates.push({ id: product.id, name: product.name, cost });
+      }
+      const unique = [...new Map(updates.map((u) => [u.id, u])).values()];
+      if (!unique.length) throw new Error("Ürünlerle eşleşen geçerli maliyet satırı bulunamadı");
+      const overwriteCount = unique.filter((u) => ws.products.find((p) => p.id === u.id)?.unitCost != null).length;
+      const approved = window.confirm(
+        `${unique.length} ürünün maliyeti güncellenecek. ${overwriteCount} mevcut maliyet değişecek. Eşleşmeyen ürünler ve diğer kayıtlar korunacak. Devam edilsin mi?`,
+      );
+      if (!approved) return;
+      unique.forEach((u) => setUnitCost(ws.tenantId, u.id, u.cost));
+      toast.success(`${unique.length} ürün maliyeti Excel'den güncellendi`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Excel dosyası okunamadı");
+    }
+  }
+
   if (ws.stores.length === 0)
     return (
       <>
@@ -79,10 +125,25 @@ function Products() {
         title="Ürünler ve maliyetler"
         description="Birim maliyet, kârlılıkta 'Ürün maliyeti' satırını oluşturur. Boş bırakılan maliyet 'bilinmiyor' olarak işaretlenir."
         actions={
-          <Button onClick={() => setEditing("new")}>
-            <Plus /> Ürün ekle
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => document.getElementById("product-cost-import")?.click()}>
+              Excel maliyet aktar
+            </Button>
+            <Button onClick={() => setEditing("new")}>
+              <Plus /> Ürün ekle
+            </Button>
+          </div>
         }
+      />
+      <input
+        id="product-cost-import"
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={(e) => {
+          void importCosts(e.target.files?.[0]);
+          e.currentTarget.value = "";
+        }}
       />
 
       {ws.products.length === 0 ? (
@@ -155,6 +216,20 @@ function Products() {
                           {p.sku}
                           {p.barcode && ` · ${p.barcode}`}
                         </div>
+                        {!!p.variants?.length && (
+                          <details className="mt-1 text-xs text-muted-foreground">
+                            <summary className="cursor-pointer">Varyantları göster ({p.variants.length})</summary>
+                            <div className="mt-1 space-y-1 pl-2">
+                              {p.variants.map((v) => (
+                                <div key={v.id || v.barcode} className="flex flex-wrap gap-x-2">
+                                  <span>{v.name || "Varyant"}</span>
+                                  <span className="num">{v.sku || v.barcode}</span>
+                                  <span>Stok: {formatNumber(v.stock)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">{storeName(p.storeId)}</TableCell>
                       <TableCell className="num text-right text-sm">%{p.vatRate}</TableCell>
