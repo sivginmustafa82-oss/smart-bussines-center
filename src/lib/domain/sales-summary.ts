@@ -48,7 +48,7 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
       gross.amount += r.grossAmount;
       cancellations.units += r.quantity;
       cancellations.amount += r.grossAmount;
-      discounts -= disc;
+      // Cancelled package discounts are not part of Trendyol's seller-discount headline.
       lines.cancellations += 1;
     }
   }
