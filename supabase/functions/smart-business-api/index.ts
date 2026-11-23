@@ -461,6 +461,7 @@ Deno.serve(async (req: Request) => {
         "Paket:" + packageId,
         "Durum:" + String(pkg?.shipmentPackageStatus ?? pkg?.status ?? "Bilinmiyor"),
         barcode ? "Barkod:" + barcode : "",
+        "Satır:" + lineId,
         stockCode ? "Stok:" + stockCode : "",
         tyDiscount ? "Trendyol katkısı:" + tyDiscount.toFixed(2) + " TL (satıcı indirimi değildir)" : "",
         commissionRate ? "Komisyon oranı:%" + commissionRate : "",
@@ -488,8 +489,8 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // Fetch approved return claim items separately. Trendyol filters claims by lastModifiedDate;
-  // we then apply the seller's selected Istanbul calendar range to the claim's approval/update time.
+  // Fetch accepted return claim items. Trendyol nests claimItems inside items[].claimItems[].
+  // lastModifiedDate is the status-update timestamp used to place the accepted return in the seller's date range.
   let claimsReceived = 0;
   let approvedReturnLines = 0;
   try {
@@ -500,42 +501,53 @@ Deno.serve(async (req: Request) => {
       const claimUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/claims");
       claimUrl.searchParams.set("startDate", String(claimStart));
       claimUrl.searchParams.set("endDate", String(claimEnd));
+      claimUrl.searchParams.set("claimItemStatus", "Accepted");
       claimUrl.searchParams.set("page", String(claimPage));
-      claimUrl.searchParams.set("size", "100");
+      claimUrl.searchParams.set("size", "200");
       const result = await fetchJson(claimUrl.toString(), trendyolHeaders);
       const content = Array.isArray(result?.content) ? result.content : [];
       claimsReceived += content.length;
       for (const claim of content) {
-        const approvedAt = Number(claim?.lastModifiedDate ?? claim?.claimDate ?? 0);
+        const approvedAt = Number(claim?.lastModifiedDate ?? 0);
         if (!approvedAt || localDate(approvedAt) < syncRange.from || localDate(approvedAt) > syncRange.to) continue;
         const claimId = String(claim?.id ?? claim?.claimId ?? "");
         const orderNumberRaw = String(claim?.orderNumber ?? "");
         const orderNumber = orderNumberRaw.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
-        for (const item of Array.isArray(claim?.claimItems) ? claim.claimItems : []) {
-          const itemStatus = String(item?.claimItemStatus?.name ?? item?.claimItemStatus ?? "").toLowerCase();
-          if (itemStatus !== "accepted") continue;
-          const orderLine = item?.orderLine ?? claim?.orderLine ?? {};
-          const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? orderLine?.quantity) || 1));
-          const unitPrice = amount(orderLine?.price ?? item?.price);
-          const gross = Math.round(unitPrice * quantity * 100) / 100;
-          if (!claimId || !orderNumber || gross <= 0) continue;
-          const claimItemId = String(item?.id ?? item?.claimItemId ?? item?.orderLineItemId ?? "");
-          if (!claimItemId) continue;
-          const barcode = String(orderLine?.barcode ?? item?.barcode ?? "").trim();
-          const productId = productByCode.get(barcode.toLowerCase()) ?? null;
-          const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + claimId + "|" + claimItemId);
-          recordsById.set(stableId, {
-            id: stableId, record_type: "return", order_number: orderNumber,
-            record_date: localDate(approvedAt), product_id: productId, quantity,
-            gross_amount: gross, discount_amount: 0, coupon_amount: 0,
-            commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
-            note: ("Onaylı Trendyol iadesi | Talep:" + claimId + " | Kalem:" + claimItemId +
-              " | Onay/son güncelleme: " + istanbulDateTimeFromEpoch(approvedAt) + " Europe/Istanbul").slice(0, 300),
-          });
-          approvedReturnLines += 1;
+        if (!claimId || !orderNumber) continue;
+        const claimLines = Array.isArray(claim?.items) ? claim.items : [];
+        for (const claimLine of claimLines) {
+          const orderLine = claimLine?.orderLine ?? {};
+          const claimItems = Array.isArray(claimLine?.claimItems) ? claimLine.claimItems : [];
+          for (const item of claimItems) {
+            const itemStatus = String(item?.claimItemStatus?.name ?? item?.claimItemStatus ?? "").toLowerCase();
+            if (itemStatus !== "accepted") continue;
+            const claimItemId = String(item?.id ?? item?.claimItemId ?? item?.orderLineItemId ?? "");
+            if (!claimItemId) continue;
+            const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? item?.returnQuantity) || 1));
+            const unitPrice = amount(orderLine?.price ?? item?.price);
+            const gross = Math.round(unitPrice * quantity * 100) / 100;
+            if (gross <= 0) continue;
+            const barcode = String(orderLine?.barcode ?? item?.barcode ?? "").trim();
+            const merchantSku = String(orderLine?.merchantSku ?? item?.merchantSku ?? "").trim();
+            const productId = productByCode.get(barcode.toLowerCase()) ??
+              productByCode.get(merchantSku.toLowerCase()) ?? null;
+            const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + claimId + "|" + claimItemId);
+            recordsById.set(stableId, {
+              id: stableId, record_type: "return", order_number: orderNumber,
+              record_date: localDate(approvedAt), product_id: productId, quantity,
+              gross_amount: gross, discount_amount: 0, coupon_amount: 0,
+              commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
+              note: ("Onaylı Trendyol iadesi | Talep:" + claimId + " | Kalem:" + claimItemId +
+                " | Paket:" + String(claim?.orderOutboundPackageId ?? "") +
+                (barcode ? " | Barkod:" + barcode : "") +
+                " | Son durum güncelleme: " + istanbulDateTimeFromEpoch(approvedAt) + " Europe/Istanbul").slice(0, 300),
+            });
+            approvedReturnLines += 1;
+          }
         }
       }
-      if (content.length < 100 || claimPage + 1 >= Number(result?.totalPages ?? 1)) break;
+      const totalPages = Math.max(1, Number(result?.totalPages ?? 1));
+      if (content.length < 200 || claimPage + 1 >= totalPages) break;
       claimPage += 1;
     }
   } catch (error) {
