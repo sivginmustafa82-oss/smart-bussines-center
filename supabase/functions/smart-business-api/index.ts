@@ -273,7 +273,7 @@ Deno.serve(async (req: Request) => {
           for (const variant of variants) {
             const barcode = String(variant?.barcode ?? "").trim();
             const stockCode = String(variant?.stockCode ?? "").trim();
-            const externalVariantId = String(variant?.variantId ?? barcode ?? "");
+            const externalVariantId = String(variant?.variantId ?? barcode ?? stockCode ?? "");
             if (!barcode && !stockCode && !externalVariantId) continue;
             const variantId = await stableUuid(body.store_id + "|trendyol-variant|" + contentId + "|" + externalVariantId + "|" + barcode);
             const variantName = Array.isArray(variant?.attributes)
