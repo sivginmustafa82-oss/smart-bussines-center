@@ -433,6 +433,9 @@ Deno.serve(async (req: Request) => {
       const line = lines[index];
       const quantity = Math.max(1, Math.floor(Number(line?.quantity) || 1));
       const type = recordType(pkg, line);
+      // Returns are sourced from the dedicated claims endpoint below, using the approval/update date.
+      // Do not also count returned shipment packages: that would duplicate returns and use order date.
+      if (type === "return") continue;
       const unitGross = amount(line?.lineGrossAmount) ||
         amount(line?.lineUnitPrice) + amount(line?.lineSellerDiscount) / quantity + amount(line?.lineTyDiscount) / quantity;
       const gross = Math.round(unitGross * quantity * 100) / 100;
@@ -485,6 +488,60 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // Fetch approved return claim items separately. Trendyol filters claims by lastModifiedDate;
+  // we then apply the seller's selected Istanbul calendar range to the claim's approval/update time.
+  let claimsReceived = 0;
+  let approvedReturnLines = 0;
+  try {
+    const claimStart = (queryWindows[0]?.startDate ?? Date.now()) - 31 * 24 * 60 * 60 * 1000;
+    const claimEnd = queryWindows[queryWindows.length - 1]?.endDate ?? Date.now();
+    let claimPage = 0;
+    while (claimPage < 50) {
+      const claimUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/claims");
+      claimUrl.searchParams.set("startDate", String(claimStart));
+      claimUrl.searchParams.set("endDate", String(claimEnd));
+      claimUrl.searchParams.set("page", String(claimPage));
+      claimUrl.searchParams.set("size", "100");
+      const result = await fetchJson(claimUrl.toString(), trendyolHeaders);
+      const content = Array.isArray(result?.content) ? result.content : [];
+      claimsReceived += content.length;
+      for (const claim of content) {
+        const approvedAt = Number(claim?.lastModifiedDate ?? claim?.claimDate ?? 0);
+        if (!approvedAt || localDate(approvedAt) < syncRange.from || localDate(approvedAt) > syncRange.to) continue;
+        const claimId = String(claim?.id ?? claim?.claimId ?? "");
+        const orderNumberRaw = String(claim?.orderNumber ?? "");
+        const orderNumber = orderNumberRaw.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
+        for (const item of Array.isArray(claim?.claimItems) ? claim.claimItems : []) {
+          const itemStatus = String(item?.claimItemStatus?.name ?? item?.claimItemStatus ?? "").toLowerCase();
+          if (itemStatus !== "accepted") continue;
+          const orderLine = item?.orderLine ?? claim?.orderLine ?? {};
+          const quantity = Math.max(1, Math.floor(Number(item?.quantity ?? orderLine?.quantity) || 1));
+          const unitPrice = amount(orderLine?.price ?? item?.price);
+          const gross = Math.round(unitPrice * quantity * 100) / 100;
+          if (!claimId || !orderNumber || gross <= 0) continue;
+          const claimItemId = String(item?.id ?? item?.claimItemId ?? item?.orderLineItemId ?? "");
+          if (!claimItemId) continue;
+          const barcode = String(orderLine?.barcode ?? item?.barcode ?? "").trim();
+          const productId = productByCode.get(barcode.toLowerCase()) ?? null;
+          const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + claimId + "|" + claimItemId);
+          recordsById.set(stableId, {
+            id: stableId, record_type: "return", order_number: orderNumber,
+            record_date: localDate(approvedAt), product_id: productId, quantity,
+            gross_amount: gross, discount_amount: 0, coupon_amount: 0,
+            commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
+            note: ("Onaylı Trendyol iadesi | Talep:" + claimId + " | Kalem:" + claimItemId +
+              " | Onay/son güncelleme: " + istanbulDateTimeFromEpoch(approvedAt) + " Europe/Istanbul").slice(0, 300),
+          });
+          approvedReturnLines += 1;
+        }
+      }
+      if (content.length < 100 || claimPage + 1 >= Number(result?.totalPages ?? 1)) break;
+      claimPage += 1;
+    }
+  } catch (error) {
+    return json({ error: "Trendyol onaylı iadeleri alınamadı: " + (error instanceof Error ? error.message : "Bilinmeyen hata") }, 502);
+  }
+
   const records = [...recordsById.values()];
   try {
     for (let offset = 0; offset < records.length; offset += 250) {
@@ -521,7 +578,8 @@ Deno.serve(async (req: Request) => {
     lines_imported: records.length,
     sale_lines: saleLines,
     cancellation_lines: cancellationLines,
-    return_lines: returnLines,
+    return_lines: approvedReturnLines,
+    claims_received: claimsReceived,
     matched_products: matchedProducts,
     unmatched_products: unmatchedProducts,
     message: "Trendyol siparişleri buluta aktarıldı. Var olan manuel kayıtlar ve finans hareketleri korunmuştur.",
