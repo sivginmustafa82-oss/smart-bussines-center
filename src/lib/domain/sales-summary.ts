@@ -29,6 +29,13 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
   let salesDiscounts = 0;
   let returnedDiscounts = 0;
   const lines = { sales: 0, returns: 0, cancellations: 0 };
+  // The selected period is based on the original order date in Trendyol's
+  // store summary. Count an approved return only when its original sale is
+  // also part of this period; otherwise an older order's later return would
+  // incorrectly inflate the selected period's return total.
+  const periodSaleOrders = new Set(
+    records.filter((r) => r.type === "sale").map((r) => r.orderNumber),
+  );
 
   for (const r of records) {
     const disc = r.discountAmount + r.couponAmount;
@@ -38,6 +45,7 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
       salesDiscounts += disc;
       lines.sales += 1;
     } else if (r.type === "return") {
+      if (!periodSaleOrders.has(r.orderNumber)) continue;
       returns.units += r.quantity;
       returns.amount += r.grossAmount;
       returnedDiscounts += disc;
