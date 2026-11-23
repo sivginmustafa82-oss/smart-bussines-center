@@ -313,7 +313,7 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);\n  const [isSyncingProducts, setIsSyncingProducts] = useState(false);\n  const [productSyncError, setProductSyncError] = useState<string | null>(null);\n  const [productSyncResult, setProductSyncResult] = useState<{products_received:number;variants_received:number;matched_order_lines:number} | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -391,6 +391,40 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
     } finally {
       setIsConnecting(false);
     }
+  }
+
+  async function syncProducts() {
+    setProductSyncError(null);
+    setProductSyncResult(null);
+    const store = trendyolStores.find((item) => item.id === (selectedStoreId || selectedStore?.id));
+    if (!store) { setProductSyncError("Aktarılacak Trendyol mağazası seçilemedi."); return; }
+    let cloudStoreId = store.id;
+    try {
+      const raw = window.localStorage.getItem("sbc:v1:cloud-id-map:" + tenantId);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      cloudStoreId = map["store:" + store.id] || store.id;
+    } catch { setProductSyncError("Mağaza bulut eşlemesi okunamadı."); return; }
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudStoreId)) {
+      setProductSyncError("Mağaza henüz buluta aktarılmamış. Önce bulut eşitlemesini çalıştırın."); return;
+    }
+    setIsSyncingProducts(true);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
+      const { data, error: functionError } = await supabase.functions.invoke("smart-business-api", {
+        body: { action: "sync_trendyol_products", store_id: cloudStoreId },
+        headers: { Authorization: "Bearer " + sessionData.session.access_token },
+      });
+      if (functionError) throw new Error(functionError.message);
+      if (!data?.ok) throw new Error(data?.error || "Ürün aktarımı tamamlanamadı.");
+      await syncWorkspaceWithCloud();
+      setProductSyncResult(data);
+      toast.success("Trendyol ürünleri aktarıldı ve siparişler eşleştirildi");
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Ürün aktarımı sırasında hata oluştu.";
+      setProductSyncError(message);
+      toast.error("Trendyol ürün aktarımı başarısız");
+    } finally { setIsSyncingProducts(false); }
   }
 
   async function syncOrders() {
@@ -511,6 +545,17 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
             </p>
           )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-3 border-t pt-4">
+            <Button type="button" variant="outline" disabled={isSyncingProducts || isConnecting} onClick={() => void syncProducts()}>
+              {isSyncingProducts ? <Loader2 className="animate-spin" /> : <Download />}
+              {isSyncingProducts ? "Ürün kataloğu aktarılıyor…" : "Trendyol ürünlerini ve barkodlarını aktar"}
+            </Button>
+            {productSyncError && <p className="md:col-span-2 text-sm text-destructive" role="alert">{productSyncError}</p>}
+            {productSyncResult && (
+              <p className="md:col-span-2 text-sm text-success" role="status">
+                {productSyncResult.products_received} ürün, {productSyncResult.variants_received} barkod/varyant aktarıldı.
+                {" "}{productSyncResult.matched_order_lines} eski sipariş satırı ürünlerle eşleştirildi.
+              </p>
+            )}
             <Button type="button" variant="outline" disabled={isSyncing || isConnecting} onClick={() => void syncOrders()}>
               {isSyncing ? <Loader2 className="animate-spin" /> : <Download />}
               {isSyncing ? "Son 30 gün aktarılıyor…" : "Son 30 günlük siparişleri aktar"}
