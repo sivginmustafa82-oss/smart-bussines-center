@@ -9,7 +9,7 @@ export interface SalesSummary {
   gross: QtyAmount;
   returns: QtyAmount;
   cancellations: QtyAmount;
-  discounts: { amount: number };
+  discounts: { amount: number; sales: number; returned: number };
   /** Trendyol-style net = gross − cancellations − returns − net discounts. */
   net: QtyAmount;
   lines: { sales: number; returns: number; cancellations: number };
@@ -18,15 +18,16 @@ export interface SalesSummary {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Uses the same order-line ledger and deduction order as the profitability
- * calculation: sale discounts/coupons increase deductions; reversed discounts
- * on returns/cancellations reduce them.
+ * Trendyol store summary: sale seller-discounts are reduced only by the
+ * discount share attached to approved returns. Cancelled package discounts
+ * are excluded from the seller-discount headline.
  */
 export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
   const gross = { units: 0, amount: 0 };
   const returns = { units: 0, amount: 0 };
   const cancellations = { units: 0, amount: 0 };
-  let discounts = 0;
+  let salesDiscounts = 0;
+  let returnedDiscounts = 0;
   const lines = { sales: 0, returns: 0, cancellations: 0 };
 
   for (const r of records) {
@@ -34,12 +35,12 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
     if (r.type === "sale") {
       gross.units += r.quantity;
       gross.amount += r.grossAmount;
-      discounts += disc;
+      salesDiscounts += disc;
       lines.sales += 1;
     } else if (r.type === "return") {
       returns.units += r.quantity;
       returns.amount += r.grossAmount;
-      discounts -= disc;
+      returnedDiscounts += disc;
       lines.returns += 1;
     } else {
       // Trendyol's gross sales includes cancelled order lines; cancellations are
@@ -57,7 +58,11 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
     gross: { units: gross.units, amount: round2(gross.amount) },
     returns: { units: returns.units, amount: round2(returns.amount) },
     cancellations: { units: cancellations.units, amount: round2(cancellations.amount) },
-    discounts: { amount: round2(discounts) },
+    discounts: {
+      amount: round2(salesDiscounts - returnedDiscounts),
+      sales: round2(salesDiscounts),
+      returned: round2(returnedDiscounts),
+    },
     net: {
       units: gross.units - returns.units - cancellations.units,
       amount: round2(gross.amount - returns.amount - cancellations.amount - discounts),
