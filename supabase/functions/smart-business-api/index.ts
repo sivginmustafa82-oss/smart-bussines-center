@@ -149,7 +149,7 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json({ error: "Geçersiz istek gövdesi." }, 400); }
 
   const action = body.action;
-  if (action !== "connect_trendyol" && action !== "save_trendyol_credentials" && action !== "sync_trendyol_orders") {
+  if (action !== "connect_trendyol" && action !== "save_trendyol_credentials" && action !== "sync_trendyol_orders" && action !== "sync_trendyol_products") {
     return json({ error: "Desteklenmeyen işlem." }, 400);
   }
   if (!body.store_id || !/^[0-9a-f-]{36}$/i.test(body.store_id)) {
@@ -217,6 +217,113 @@ Deno.serve(async (req: Request) => {
       sample_packages: Array.isArray(testResult?.content) ? testResult.content.length : 0,
       message: "Trendyol bağlantısı doğrulandı; API bilgileri şifrelenerek kaydedildi.",
     });
+  }
+
+  if (action === "sync_trendyol_products") {
+    const headers = {
+      Accept: "application/json",
+      Authorization: "Basic " + btoa(credentials.apiKey + ":" + credentials.apiSecret),
+      "User-Agent": credentials.supplierId + " - SelfIntegration",
+    };
+    const productMap = new Map<string, any>();
+    const variantMap = new Map<string, any>();
+    let page = 0;
+    let nextPageToken = "";
+    let pagesFetched = 0;
+    try {
+      while (pagesFetched < 110) {
+        const productUrl = new URL("https://apigw.trendyol.com/integration/product/sellers/" + credentials.supplierId + "/products/approved");
+        productUrl.searchParams.set("size", "100");
+        if (nextPageToken) productUrl.searchParams.set("nextPageToken", nextPageToken);
+        else productUrl.searchParams.set("page", String(page));
+        const result = await fetchJson(productUrl.toString(), headers);
+        const content = Array.isArray(result?.content) ? result.content : [];
+        for (const item of content) {
+          const contentId = String(item?.contentId ?? "");
+          if (!contentId) continue;
+          const productId = await stableUuid(body.store_id + "|trendyol-product|" + contentId);
+          const variants = Array.isArray(item?.variants) ? item.variants : [];
+          productMap.set(productId, {
+            id: productId,
+            external_product_id: contentId,
+            title: String(item?.title ?? "Trendyol ürünü").slice(0, 500),
+            category: String(item?.category?.name ?? "").slice(0, 250) || null,
+            brand: String(item?.brand?.name ?? "").slice(0, 250) || null,
+            product_url: String(variants.find((v: any) => v?.productUrl)?.productUrl ?? "").slice(0, 2000) || null,
+            status: variants.some((v: any) => v?.onSale) ? "active" : "inactive",
+          });
+          for (const variant of variants) {
+            const barcode = String(variant?.barcode ?? "").trim();
+            const stockCode = String(variant?.stockCode ?? "").trim();
+            const externalVariantId = String(variant?.variantId ?? barcode ?? "");
+            if (!barcode && !stockCode && !externalVariantId) continue;
+            const variantId = await stableUuid(body.store_id + "|trendyol-variant|" + contentId + "|" + externalVariantId + "|" + barcode);
+            const variantName = Array.isArray(variant?.attributes)
+              ? variant.attributes.map((a: any) => String(a?.attributeValue ?? "")).filter(Boolean).join(" / ").slice(0, 250)
+              : "";
+            variantMap.set(variantId, {
+              id: variantId, product_id: productId,
+              external_variant_id: externalVariantId.slice(0, 200) || null,
+              barcode: barcode.slice(0, 200) || null, sku: stockCode.slice(0, 200) || null,
+              variant_name: variantName || null,
+              sale_price: Number(variant?.price?.salePrice) > 0 ? Number(variant.price.salePrice) : null,
+              list_price: Number(variant?.price?.listPrice) > 0 ? Number(variant.price.listPrice) : null,
+              stock_quantity: Math.max(0, Math.floor(Number(variant?.stock?.quantity) || 0)),
+              vat_rate: Number.isFinite(Number(variant?.vatRate)) ? Number(variant.vatRate) : null,
+            });
+          }
+        }
+        pagesFetched += 1;
+        const totalPages = Number(result?.totalPages ?? 0);
+        if (nextPageToken) {
+          nextPageToken = String(result?.nextPageToken ?? "");
+          if (!nextPageToken) break;
+        } else if (page + 1 < totalPages && page < 99) {
+          page += 1;
+        } else if (page >= 99 && result?.nextPageToken) {
+          nextPageToken = String(result.nextPageToken);
+        } else {
+          break;
+        }
+        if (content.length === 0) break;
+      }
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Trendyol ürün kataloğu alınamadı." }, 502);
+    }
+
+    const products = [...productMap.values()];
+    const variants = [...variantMap.values()];
+    let productsUpserted = 0;
+    let variantsUpserted = 0;
+    try {
+      for (let offset = 0; offset < products.length; offset += 250) {
+        const productBatch = products.slice(offset, offset + 250);
+        const productIds = new Set(productBatch.map((p: any) => p.id));
+        const variantBatch = variants.filter((v: any) => productIds.has(v.product_id));
+        const saveResponse = await fetch(url + "/rest/v1/rpc/import_trendyol_products", {
+          method: "POST", headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ p_store_id: body.store_id, p_products: productBatch, p_variants: variantBatch }),
+        });
+        if (!saveResponse.ok) throw new Error("Ürün kataloğu kaydedilemedi: " + (await saveResponse.text()).slice(0, 250));
+        const saved = await saveResponse.json();
+        productsUpserted += Number(saved?.products_upserted ?? 0);
+        variantsUpserted += Number(saved?.variants_upserted ?? 0);
+      }
+      const matchResponse = await fetch(url + "/rest/v1/rpc/match_trendyol_order_products", {
+        method: "POST", headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_store_id: body.store_id }),
+      });
+      if (!matchResponse.ok) throw new Error("Aktarılan siparişler ürünlerle eşleştirilemedi: " + (await matchResponse.text()).slice(0, 250));
+      const matchResult = await matchResponse.json();
+      return json({
+        ok: true, products_received: products.length, variants_received: variants.length,
+        products_upserted: productsUpserted, variants_upserted: variantsUpserted,
+        matched_order_lines: Number(matchResult?.matched_order_lines ?? 0),
+        message: "Trendyol ürün kataloğu aktarıldı ve eşleşen sipariş satırları güncellendi.",
+      });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Ürünler kaydedilemedi." }, 500);
+    }
   }
 
   const days = Math.min(30, Math.max(1, Math.floor(Number(body.days) || 30)));
