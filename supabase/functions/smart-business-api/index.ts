@@ -244,32 +244,43 @@ Deno.serve(async (req: Request) => {
   };
   const endDate = Date.now();
   const startDate = endDate - days * 24 * 60 * 60 * 1000;
-  const packages: any[] = [];
+  const packagesById = new Map<string, any>();
   let totalElements = 0;
-  let page = 0;
 
   try {
-    while (page < 50) {
-      const orderUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/v2/orders");
-      orderUrl.searchParams.set("startDate", String(startDate));
-      orderUrl.searchParams.set("endDate", String(endDate));
-      orderUrl.searchParams.set("page", String(page));
-      orderUrl.searchParams.set("size", "200");
-      orderUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
-      orderUrl.searchParams.set("orderByDirection", "DESC");
-      const result = await fetchJson(orderUrl.toString(), trendyolHeaders);
-      const content = Array.isArray(result?.content) ? result.content : [];
-      totalElements = Number(result?.totalElements ?? content.length);
-      if (totalElements > 10000) {
-        return json({ error: "Seçilen tarih aralığında 10.000'den fazla paket var. Daha kısa tarih aralığıyla aktarım yapılmalı.", total_packages: totalElements }, 422);
+    // Keep every request inside the documented two-week query window.
+    const maxWindowMs = 13 * 24 * 60 * 60 * 1000;
+    for (let windowStart = startDate; windowStart < endDate; windowStart += maxWindowMs) {
+      const windowEnd = Math.min(windowStart + maxWindowMs, endDate);
+      let page = 0;
+      let windowTotal = 0;
+      while (page < 50) {
+        const orderUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/v2/orders");
+        orderUrl.searchParams.set("startDate", String(windowStart));
+        orderUrl.searchParams.set("endDate", String(windowEnd));
+        orderUrl.searchParams.set("page", String(page));
+        orderUrl.searchParams.set("size", "200");
+        orderUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
+        orderUrl.searchParams.set("orderByDirection", "DESC");
+        const result = await fetchJson(orderUrl.toString(), trendyolHeaders);
+        const content = Array.isArray(result?.content) ? result.content : [];
+        windowTotal = Number(result?.totalElements ?? content.length);
+        if (windowTotal > 10000) {
+          return json({ error: "Seçilen tarih diliminde 10.000'den fazla paket var. Daha kısa tarih aralığıyla aktarım yapılmalı.", total_packages: windowTotal }, 422);
+        }
+        for (const pkg of content) {
+          const packageId = String(pkg?.shipmentPackageId ?? pkg?.id ?? "");
+          if (packageId) packagesById.set(packageId, pkg);
+        }
+        if (content.length < 200 || page + 1 >= Number(result?.totalPages ?? 1)) break;
+        page += 1;
       }
-      packages.push(...content);
-      if (content.length < 200 || page + 1 >= Number(result?.totalPages ?? 1)) break;
-      page += 1;
+      totalElements += windowTotal;
     }
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Trendyol siparişleri alınamadı." }, 502);
   }
+  const packages = [...packagesById.values()];
 
   const productUrl = new URL(url + "/rest/v1/products");
   productUrl.searchParams.set("store_id", "eq." + body.store_id);
