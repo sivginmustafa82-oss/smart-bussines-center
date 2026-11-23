@@ -87,8 +87,6 @@ function StoreSummary() {
               ["Brüt satış", summary.gross.amount, "+"],
               ["İptaller", summary.cancellations.amount, "−"],
               ["İadeler", summary.returns.amount, "−"],
-              ["Satış indirimleri", summary.discounts.sales, "−"],
-              ["İade edilen ürün indirimi", summary.discounts.returned, "+"],
               ["Net indirim", summary.discounts.amount, "−"],
             ].map(([label, value, sign]) => (
               <div key={String(label)} className="flex items-center justify-between gap-3 text-sm">
@@ -96,6 +94,21 @@ function StoreSummary() {
                 <span className="font-semibold tabular-nums">{sign} {money(Number(value))}</span>
               </div>
             ))}
+            <div className="rounded-xl bg-muted/40 p-3">
+              <div className="mb-2 text-sm font-semibold">İndirim mutabakatı</div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Satışlardaki satıcı indirimi</span>
+                <span className="font-medium tabular-nums">{money(summary.discounts.sales)}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">İade edilen ürün indirimi (geri eklenir)</span>
+                <span className="font-medium tabular-nums">+ {money(summary.discounts.returned)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2 text-sm">
+                <span className="font-semibold">Trendyol indirim toplamı</span>
+                <span className="font-semibold tabular-nums">{money(summary.discounts.amount)}</span>
+              </div>
+            </div>
             <div className="border-t pt-4">
               <div className="text-sm text-muted-foreground">Hesaplanan net satış</div>
               <div className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{money(summary.net.amount)}</div>
