@@ -307,7 +307,7 @@ function Settings() {
 
 function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenantId: string }) {
   const trendyolStores = stores.filter((store) => store.marketplace === "trendyol");
-  const selectedStore = trendyolStores[0];
+  const selectedStore = trendyolStores.find((store) => store.connectionStatus === "connected") ?? trendyolStores[0];
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [apiKey, setApiKey] = useState("");
