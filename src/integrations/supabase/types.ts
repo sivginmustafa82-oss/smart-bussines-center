@@ -1050,9 +1050,28 @@ export type Database = {
     }
     Functions: {
       delete_store: { Args: { p_store_id: string }; Returns: undefined }
+      get_marketplace_secret_for_user: {
+        Args: { p_store_id: string }
+        Returns: {
+          credential_ciphertext: string
+          encryption_key_version: number
+        }[]
+      }
       has_org_role: {
         Args: { _org: string; _roles: string[] }
         Returns: boolean
+      }
+      import_trendyol_order_records: {
+        Args: { p_records: Json; p_store_id: string }
+        Returns: Json
+      }
+      import_trendyol_products: {
+        Args: { p_products: Json; p_store_id: string; p_variants: Json }
+        Returns: Json
+      }
+      match_trendyol_order_products: {
+        Args: { p_store_id: string }
+        Returns: Json
       }
       save_manual_product: {
         Args: {
