@@ -29,6 +29,12 @@ import { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
 import { supabase } from "@/integrations/supabase/client";
 import type { Store } from "@/lib/domain/types";
+import {
+  MAX_SYNC_RANGE_DAYS,
+  addDays,
+  daysBetween,
+  istanbulToday,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export const Route = createFileRoute("/_panel/ayarlar")({
   head: () => ({
@@ -332,7 +338,16 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
   const [syncResult, setSyncResult] = useState<{
     packages_received: number; lines_imported: number; sale_lines: number;
     cancellation_lines: number; return_lines: number; matched_products: number; unmatched_products: number;
+    start_date?: string; end_date?: string; query_start?: string; query_end?: string;
   } | null>(null);
+  // Istanbul calendar days; the server converts them to 00:00:00.000 – 23:59:59.999 local time.
+  const [syncTo, setSyncTo] = useState("");
+  const [syncFrom, setSyncFrom] = useState("");
+  useEffect(() => {
+    const today = istanbulToday();
+    setSyncTo(today);
+    setSyncFrom(addDays(today, -29));
+  }, []);
 
   async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -460,12 +475,24 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
       setSyncError("Mağaza henüz buluta aktarılmamış. Önce “Bulut eşitleme” bölümünden eşitleyin.");
       return;
     }
+    if (!syncFrom || !syncTo) {
+      setSyncError("Başlangıç ve bitiş tarihini seçin.");
+      return;
+    }
+    if (daysBetween(syncFrom, syncTo) < 0) {
+      setSyncError("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+      return;
+    }
+    if (daysBetween(syncFrom, syncTo) + 1 > MAX_SYNC_RANGE_DAYS) {
+      setSyncError(`Tek seferde en fazla ${MAX_SYNC_RANGE_DAYS} gün aktarılabilir.`);
+      return;
+    }
     setIsSyncing(true);
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session) throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
       const { data, error: functionError } = await supabase.functions.invoke("smart-business-api", {
-        body: { action: "sync_trendyol_orders", store_id: cloudStoreId, days: 30 },
+        body: { action: "sync_trendyol_orders", store_id: cloudStoreId, start_date: syncFrom, end_date: syncTo },
         headers: { Authorization: "Bearer " + sessionData.session.access_token },
       });
       if (functionError) throw new Error(functionError.message);
@@ -473,7 +500,7 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
       // Pull the imported cloud rows into this browser so dashboards refresh immediately.
       await syncWorkspaceWithCloud();
       setSyncResult(data);
-      toast.success("Son 30 günlük Trendyol siparişleri aktarıldı");
+      toast.success("Seçilen tarih aralığındaki Trendyol siparişleri aktarıldı");
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Sipariş aktarımı sırasında hata oluştu.";
       setSyncError(message);
@@ -568,10 +595,23 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
                 {" "}{productSyncResult.matched_order_lines} eski sipariş satırı ürünlerle eşleştirildi.
               </p>
             )}
-            <Button type="button" variant="outline" disabled={isSyncing || isConnecting} onClick={() => void syncOrders()}>
-              {isSyncing ? <Loader2 className="animate-spin" /> : <Download />}
-              {isSyncing ? "Son 30 gün aktarılıyor…" : "Son 30 günlük siparişleri aktar"}
-            </Button>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <label htmlFor="ty-sync-from" className="text-xs font-medium">Başlangıç</label>
+                <Input id="ty-sync-from" type="date" className="h-9 w-40" value={syncFrom} onChange={(e) => setSyncFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="ty-sync-to" className="text-xs font-medium">Bitiş</label>
+                <Input id="ty-sync-to" type="date" className="h-9 w-40" value={syncTo} onChange={(e) => setSyncTo(e.target.value)} />
+              </div>
+              <Button type="button" variant="outline" disabled={isSyncing || isConnecting} onClick={() => void syncOrders()}>
+                {isSyncing ? <Loader2 className="animate-spin" /> : <Download />}
+                {isSyncing ? "Siparişler aktarılıyor…" : "Bu tarih aralığındaki siparişleri aktar"}
+              </Button>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              Tarihler İstanbul saatine göre alınır: başlangıç günü 00:00:00, bitiş günü 23:59:59 dahil. En fazla {MAX_SYNC_RANGE_DAYS} gün.
+            </span>
             <span className="text-xs text-muted-foreground">
               Mevcut manuel siparişler ve finans hareketleri silinmez; Trendyol kayıtları ayrı kaynak olarak eklenir.
             </span>
@@ -583,6 +623,9 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
           )}
           {syncResult && (
             <p className="md:col-span-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success" role="status">
+              {syncResult.start_date && syncResult.end_date && (
+                <>Aralık: {syncResult.query_start ?? syncResult.start_date} – {syncResult.query_end ?? syncResult.end_date}. </>
+              )}
               {syncResult.packages_received} paket incelendi; {syncResult.lines_imported} sipariş satırı aktarıldı.
               {" "}Satış: {syncResult.sale_lines}, iptal: {syncResult.cancellation_lines}, iade: {syncResult.return_lines}.
               {" "}Ürün eşleşmesi: {syncResult.matched_products}; eşleşmeyen: {syncResult.unmatched_products}.

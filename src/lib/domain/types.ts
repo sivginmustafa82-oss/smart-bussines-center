@@ -45,6 +45,18 @@ export interface Store {
   createdAt: string;
 }
 
+/** One marketplace variant (e.g. a size) of a product. Read-only copy of the marketplace catalog. */
+export interface ProductVariant {
+  id: string;
+  barcode: string;
+  sku: string;
+  /** Attribute values such as size/colour, e.g. "90 x 190". */
+  name: string;
+  salePrice: number | null;
+  listPrice: number | null;
+  stock: number;
+}
+
 export interface Product {
   id: string;
   tenantId: string;
@@ -59,6 +71,10 @@ export interface Product {
   verified: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Marketplace main product id (Trendyol contentId) when imported. */
+  externalProductId?: string;
+  /** Marketplace variants grouped under this main product. Absent for manual products. */
+  variants?: ProductVariant[];
 }
 
 /**

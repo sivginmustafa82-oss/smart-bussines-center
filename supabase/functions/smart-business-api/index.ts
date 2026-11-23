@@ -1,3 +1,5 @@
+import { istanbulDateFromEpoch, istanbulDateTimeFromEpoch, resolveSyncRange, trendyolQueryWindows } from "./trendyol-time.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -81,12 +83,9 @@ function friendlyTrendyolError(status: number): string {
   return "Trendyol isteği başarısız oldu (HTTP " + status + ").";
 }
 
+/** Trendyol epoch-ms timestamp → Istanbul calendar day (same result as the original converter). */
 function localDate(timestamp: number): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date(timestamp));
-  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "00";
-  return part("year") + "-" + part("month") + "-" + part("day");
+  return istanbulDateFromEpoch(timestamp);
 }
 
 async function stableUuid(value: string): Promise<string> {
@@ -131,7 +130,7 @@ Deno.serve(async (req: Request) => {
 
   const pathname = new URL(req.url).pathname;
   if (req.method === "GET" && pathname.endsWith("/health")) {
-    return json({ ok: true, service: "smart-business-center-api", version: 4 });
+    return json({ ok: true, service: "smart-business-center-api", version: 5 });
   }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -145,6 +144,7 @@ Deno.serve(async (req: Request) => {
 
   let body: {
     action?: string; store_id?: string; supplier_id?: string; api_key?: string; api_secret?: string; days?: number;
+    start_date?: string; end_date?: string;
   };
   try { body = await req.json(); } catch { return json({ error: "Geçersiz istek gövdesi." }, 400); }
 
@@ -219,7 +219,13 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const days = Math.min(30, Math.max(1, Math.floor(Number(body.days) || 30)));
+  let syncRange: { from: string; to: string };
+  try {
+    syncRange = resolveSyncRange(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Geçersiz tarih aralığı." }, 400);
+  }
+  const days = Math.round((Date.parse(syncRange.to) - Date.parse(syncRange.from)) / 86_400_000) + 1;
   const secretResponse = await fetch(url + "/rest/v1/rpc/get_marketplace_secret_for_user", {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -349,16 +355,17 @@ Deno.serve(async (req: Request) => {
     Authorization: "Basic " + btoa(credentials.apiKey + ":" + credentials.apiSecret),
     "User-Agent": credentials.supplierId + " - SelfIntegration",
   };
-  const endDate = Date.now();
-  const startDate = endDate - days * 24 * 60 * 60 * 1000;
+  // Istanbul day boundaries: start 00:00:00.000, end 23:59:59.999 local time (see trendyol-time.ts).
+  const queryWindows = trendyolQueryWindows(syncRange.from, syncRange.to, 13);
+  const endDate = queryWindows[queryWindows.length - 1]?.endDate ?? Date.now();
   const packagesById = new Map<string, any>();
   let totalElements = 0;
 
   try {
-    // Keep every request inside the documented two-week query window.
-    const maxWindowMs = 13 * 24 * 60 * 60 * 1000;
-    for (let windowStart = startDate; windowStart < endDate; windowStart += maxWindowMs) {
-      const windowEnd = Math.min(windowStart + maxWindowMs, endDate);
+    // Keep every request inside the documented two-week query window, aligned to local midnight.
+    for (const queryWindow of queryWindows) {
+      const windowStart = queryWindow.startDate;
+      const windowEnd = queryWindow.endDate;
       let page = 0;
       let windowTotal = 0;
       while (page < 50) {
@@ -461,7 +468,7 @@ Deno.serve(async (req: Request) => {
         id: stableId,
         record_type: type,
         order_number: orderNumber,
-        record_date: localDate(Number(pkg?.orderDate ?? pkg?.createdDate ?? pkg?.lastModifiedDate ?? endDate)),
+        record_date: localDate(Number(pkg?.orderDate ?? pkg?.createdDate ?? pkg?.lastModifiedDate ?? Date.now())),
         product_id: productId,
         quantity,
         gross_amount: gross,
@@ -505,6 +512,10 @@ Deno.serve(async (req: Request) => {
   return json({
     ok: true,
     days,
+    start_date: syncRange.from,
+    end_date: syncRange.to,
+    query_start: istanbulDateTimeFromEpoch(queryWindows[0]?.startDate ?? endDate) + " (Europe/Istanbul)",
+    query_end: istanbulDateTimeFromEpoch(endDate) + " (Europe/Istanbul)",
     packages_received: packages.length,
     total_packages: totalElements,
     lines_imported: records.length,
