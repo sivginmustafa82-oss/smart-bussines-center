@@ -424,6 +424,8 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
       });
       if (functionError) throw new Error(functionError.message);
       if (!data?.ok) throw new Error(data?.error || "Sipariş aktarımı tamamlanamadı.");
+      // Pull the imported cloud rows into this browser so dashboards refresh immediately.
+      await syncWorkspaceWithCloud();
       setSyncResult(data);
       toast.success("Son 30 günlük Trendyol siparişleri aktarıldı");
     } catch (cause) {
