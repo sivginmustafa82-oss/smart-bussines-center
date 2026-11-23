@@ -647,7 +647,7 @@ Deno.serve(async (req: Request) => {
     sale_lines: saleLines,
     cancellation_lines: cancellationLines,
     return_lines: approvedReturnLines,
-    return_gross_amount: roundMoney(records.filter((record) => record.record_type === "return").reduce((sum, record) => sum + Number(record.gross_amount ?? 0), 0)),
+    return_gross_amount: Math.round(records.filter((record) => record.record_type === "return").reduce((sum, record) => sum + Number(record.gross_amount ?? 0), 0) * 100) / 100,
     return_discount_matched: Math.round(matchedReturnDiscountAmount * 100) / 100,
     return_discount_unmatched_lines: unmatchedReturnDiscountLines,
     claims_received: claimsReceived,
