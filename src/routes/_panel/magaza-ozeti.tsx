@@ -87,7 +87,9 @@ function StoreSummary() {
               ["Brüt satış", summary.gross.amount, "+"],
               ["İptaller", summary.cancellations.amount, "−"],
               ["İadeler", summary.returns.amount, "−"],
-              ["İndirimler", summary.discounts.amount, "−"],
+              ["Satış indirimleri", summary.discounts.sales, "−"],
+              ["İade edilen ürün indirimi", summary.discounts.returned, "+"],
+              ["Net indirim", summary.discounts.amount, "−"],
             ].map(([label, value, sign]) => (
               <div key={String(label)} className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">{label}</span>
@@ -103,8 +105,8 @@ function StoreSummary() {
         </Panel>
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
-        {records.length} kayıt üzerinden hesaplandı. İndirim tutarı, satışlardaki indirim + kuponlardan iade/iptal kayıtlarında geri alınan indirimlerin çıkarılmasıyla bulunur.
-        Bu ekran yalnızca uygulamaya aktarılmış kayıtları hesaplar; Trendyol paneliyle birebir mutabakat için aynı tarih aralığı ve aynı sipariş kayıtlarının içe aktarılmış olması gerekir.
+        {records.length} kayıt üzerinden hesaplandı. Net indirim = satış indirimleri − onaylı iadeye ait ürün indirimi. İptal paketlerinin indirimleri Trendyol indirim toplamına dahil edilmez.
+        Trendyol ile birebir mutabakat için seçili tarih aralığındaki onaylı iadelerin de aktarılmış olması gerekir.
       </p>
     </>
   );
