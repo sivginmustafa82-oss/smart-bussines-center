@@ -76,11 +76,20 @@ function Settings() {
     reconciliations: ws.reconciliations.length,
   };
   const totalLocal = Object.values(localCounts).reduce((sum, count) => sum + count, 0);
-  const statusItems = STATUS.map((item) =>
-    item.t === "Bulut veritabanı"
-      ? { ...item, v: importResult ? "Yerel kayıtlar aktarıldı" : "Supabase hazır · aktarım bekliyor", tone: importResult ? ("success" as const) : ("warning" as const) }
-      : item,
-  );
+  const statusItems = STATUS.map((item) => {
+    if (item.t === "Bulut veritabanı") {
+      return { ...item, v: importResult ? "Yerel kayıtlar aktarıldı" : "Supabase hazır · aktarım bekliyor", tone: importResult ? ("success" as const) : ("warning" as const) };
+    }
+    if (item.t === "Trendyol API") {
+      const connected = ws.stores.some((store) => store.marketplace === "trendyol" && store.connectionStatus === "connected");
+      return { ...item, v: connected ? "Bağlı · API bilgileri şifreli saklanıyor" : "Henüz bağlanmadı", tone: connected ? ("success" as const) : ("neutral" as const) };
+    }
+    if (item.t === "Şifreli anahtar deposu") {
+      const connected = ws.stores.some((store) => store.marketplace === "trendyol" && store.connectionStatus === "connected");
+      return { ...item, v: connected ? "Hazır · API bilgileri şifreli" : "Veritabanı hazır · API akışı bekliyor", tone: connected ? ("success" as const) : ("warning" as const) };
+    }
+    return item;
+  });
 
   useEffect(() => {
     if (!ws.tenantId || typeof window === "undefined") return;
