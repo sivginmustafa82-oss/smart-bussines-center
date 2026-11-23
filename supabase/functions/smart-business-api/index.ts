@@ -493,6 +493,8 @@ Deno.serve(async (req: Request) => {
   // The claim package's lastModifiedDate is used as the accepted-status update date.
   let claimsReceived = 0;
   let approvedReturnLines = 0;
+  let matchedReturnDiscountAmount = 0;
+  let unmatchedReturnDiscountLines = 0;
   try {
     const claimWindows = trendyolQueryWindows(syncRange.from, syncRange.to, 13);
     const acceptedClaimItems: Array<{
@@ -589,6 +591,8 @@ Deno.serve(async (req: Request) => {
         ? Number(matchingSale.gross_amount ?? 0) / originalQuantity
         : item.gross / item.quantity;
       const returnGross = Math.round(originalGrossPerUnit * item.quantity * 100) / 100;
+      if (matchingSale) matchedReturnDiscountAmount += discountAmount + couponAmount;
+      else unmatchedReturnDiscountLines += 1;
       const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + item.claimId + "|" + item.id);
       recordsById.set(stableId, {
         id: stableId, record_type: "return", order_number: item.orderNumber,
@@ -643,6 +647,9 @@ Deno.serve(async (req: Request) => {
     sale_lines: saleLines,
     cancellation_lines: cancellationLines,
     return_lines: approvedReturnLines,
+    return_gross_amount: roundMoney(records.filter((record) => record.record_type === "return").reduce((sum, record) => sum + Number(record.gross_amount ?? 0), 0)),
+    return_discount_matched: Math.round(matchedReturnDiscountAmount * 100) / 100,
+    return_discount_unmatched_lines: unmatchedReturnDiscountLines,
     claims_received: claimsReceived,
     matched_products: matchedProducts,
     unmatched_products: unmatchedProducts,
