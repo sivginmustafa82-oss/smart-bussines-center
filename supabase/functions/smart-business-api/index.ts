@@ -490,12 +490,17 @@ Deno.serve(async (req: Request) => {
   }
 
   // Fetch accepted return claim items. Trendyol nests claimItems inside items[].claimItems[].
-  // lastModifiedDate is the status-update timestamp used to place the accepted return in the seller's date range.
+  // The claim package's lastModifiedDate is used as the accepted-status update date.
   let claimsReceived = 0;
   let approvedReturnLines = 0;
   try {
     const claimStart = (queryWindows[0]?.startDate ?? Date.now()) - 31 * 24 * 60 * 60 * 1000;
     const claimEnd = queryWindows[queryWindows.length - 1]?.endDate ?? Date.now();
+    const acceptedClaimItems: Array<{
+      id: string; claimId: string; orderNumber: string; approvedAt: number;
+      quantity: number; gross: number; barcode: string; merchantSku: string;
+      productId: string | null; outboundPackageId: string; orderLineItemId: string;
+    }> = [];
     let claimPage = 0;
     while (claimPage < 50) {
       const claimUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/claims");
@@ -511,9 +516,9 @@ Deno.serve(async (req: Request) => {
         const approvedAt = Number(claim?.lastModifiedDate ?? 0);
         if (!approvedAt || localDate(approvedAt) < syncRange.from || localDate(approvedAt) > syncRange.to) continue;
         const claimId = String(claim?.id ?? claim?.claimId ?? "");
-        const orderNumberRaw = String(claim?.orderNumber ?? "");
-        const orderNumber = orderNumberRaw.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
+        const orderNumber = String(claim?.orderNumber ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
         if (!claimId || !orderNumber) continue;
+        const outboundPackageId = String(claim?.orderOutboundPackageId ?? "");
         const claimLines = Array.isArray(claim?.items) ? claim.items : [];
         for (const claimLine of claimLines) {
           const orderLine = claimLine?.orderLine ?? {};
@@ -531,24 +536,66 @@ Deno.serve(async (req: Request) => {
             const merchantSku = String(orderLine?.merchantSku ?? item?.merchantSku ?? "").trim();
             const productId = productByCode.get(barcode.toLowerCase()) ??
               productByCode.get(merchantSku.toLowerCase()) ?? null;
-            const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + claimId + "|" + claimItemId);
-            recordsById.set(stableId, {
-              id: stableId, record_type: "return", order_number: orderNumber,
-              record_date: localDate(approvedAt), product_id: productId, quantity,
-              gross_amount: gross, discount_amount: 0, coupon_amount: 0,
-              commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
-              note: ("Onaylı Trendyol iadesi | Talep:" + claimId + " | Kalem:" + claimItemId +
-                " | Paket:" + String(claim?.orderOutboundPackageId ?? "") +
-                (barcode ? " | Barkod:" + barcode : "") +
-                " | Son durum güncelleme: " + istanbulDateTimeFromEpoch(approvedAt) + " Europe/Istanbul").slice(0, 300),
+            acceptedClaimItems.push({
+              id: claimItemId, claimId, orderNumber, approvedAt, quantity, gross,
+              barcode, merchantSku, productId, outboundPackageId,
+              orderLineItemId: String(item?.orderLineItemId ?? orderLine?.id ?? ""),
             });
-            approvedReturnLines += 1;
           }
         }
       }
       const totalPages = Math.max(1, Number(result?.totalPages ?? 1));
       if (content.length < 200 || claimPage + 1 >= totalPages) break;
       claimPage += 1;
+    }
+
+    // Match each returned unit to its original sale line so its seller discount is reversed,
+    // while cancellation discounts remain excluded from Trendyol's headline discount figure.
+    const orderNumbers = [...new Set(acceptedClaimItems.map((item) => item.orderNumber))];
+    let originalSaleRows: any[] = [];
+    if (orderNumbers.length) {
+      const originalUrl = new URL(url + "/rest/v1/order_records");
+      originalUrl.searchParams.set("store_id", "eq." + body.store_id);
+      originalUrl.searchParams.set("record_type", "eq.sale");
+      originalUrl.searchParams.set("order_number", "in.(" + orderNumbers.join(",") + ")");
+      originalUrl.searchParams.set("select", "order_number,quantity,discount_amount,coupon_amount,note");
+      originalUrl.searchParams.set("limit", "1000");
+      const originalResponse = await fetch(originalUrl, { headers: authHeaders });
+      if (!originalResponse.ok) throw new Error("İade indirimi için asıl sipariş satırları okunamadı.");
+      originalSaleRows = await originalResponse.json();
+    }
+
+    for (const item of acceptedClaimItems) {
+      const lineMarker = item.orderLineItemId ? "Satır:" + item.orderLineItemId : "";
+      const packageMarker = item.outboundPackageId ? "Paket:" + item.outboundPackageId : "";
+      const barcodeMarker = item.barcode ? "Barkod:" + item.barcode : "";
+      const matchingSale = originalSaleRows.find((row: any) =>
+        row.order_number === item.orderNumber &&
+        ((lineMarker && String(row.note ?? "").includes(lineMarker)) ||
+          (packageMarker && barcodeMarker && String(row.note ?? "").includes(packageMarker) &&
+            String(row.note ?? "").includes(barcodeMarker)))
+      ) ?? originalSaleRows.find((row: any) =>
+        row.order_number === item.orderNumber && barcodeMarker && String(row.note ?? "").includes(barcodeMarker)
+      );
+      const originalQuantity = Math.max(1, Number(matchingSale?.quantity) || 1);
+      const discountAmount = matchingSale
+        ? Math.round((Number(matchingSale.discount_amount ?? 0) * item.quantity / originalQuantity) * 100) / 100
+        : 0;
+      const couponAmount = matchingSale
+        ? Math.round((Number(matchingSale.coupon_amount ?? 0) * item.quantity / originalQuantity) * 100) / 100
+        : 0;
+      const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + item.claimId + "|" + item.id);
+      recordsById.set(stableId, {
+        id: stableId, record_type: "return", order_number: item.orderNumber,
+        record_date: localDate(item.approvedAt), product_id: item.productId, quantity: item.quantity,
+        gross_amount: item.gross, discount_amount: discountAmount, coupon_amount: couponAmount,
+        commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
+        note: ("Onaylı Trendyol iadesi | Talep:" + item.claimId + " | Kalem:" + item.id +
+          " | Paket:" + item.outboundPackageId + (item.barcode ? " | Barkod:" + item.barcode : "") +
+          (matchingSale ? " | İade indirimi eşleşti" : " | İade indirimi için satış satırı bulunamadı") +
+          " | Son durum güncelleme: " + istanbulDateTimeFromEpoch(item.approvedAt) + " Europe/Istanbul").slice(0, 300),
+      });
+      approvedReturnLines += 1;
     }
   } catch (error) {
     return json({ error: "Trendyol onaylı iadeleri alınamadı: " + (error instanceof Error ? error.message : "Bilinmeyen hata") }, 502);
