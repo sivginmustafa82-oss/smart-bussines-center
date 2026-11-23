@@ -2,7 +2,7 @@
 
 export type Marketplace = "trendyol" | "hepsiburada" | "amazon_tr" | "n11";
 
-/** manual = typed in by the user; imported = pulled from a marketplace API (not available yet). */
+/** manual = typed by the user; imported = retrieved from a connected marketplace API. */
 export type DataSource = "manual" | "imported";
 
 export type RecordType = "sale" | "return" | "cancellation";
@@ -17,7 +17,7 @@ export type ExpenseCategory =
   | "kira"
   | "diger";
 
-export type ConnectionStatus = "not_connected";
+export type ConnectionStatus = "not_connected" | "connected" | "error" | "paused";
 
 export interface User {
   id: string;

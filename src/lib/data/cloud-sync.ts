@@ -140,7 +140,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     tenantId: session.tenantId,
     name: row.name,
     marketplace: marketplace(row.marketplace),
-    connectionStatus: "not_connected",
+    connectionStatus: row.connection_status === "connected" ? "connected" : "not_connected",
     createdAt: row.created_at,
   }));
 

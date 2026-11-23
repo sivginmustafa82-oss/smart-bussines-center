@@ -28,16 +28,15 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function encryptCredentials(payload: object, rootSecret: string, projectUrl: string) {
+function fromBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function deriveCredentialKey(rootSecret: string, projectUrl: string, usages: KeyUsage[]) {
   const encoder = new TextEncoder();
-  const material = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(rootSecret),
-    "HKDF",
-    false,
-    ["deriveKey"],
-  );
-  const key = await crypto.subtle.deriveKey(
+  const material = await crypto.subtle.importKey("raw", encoder.encode(rootSecret), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
     {
       name: "HKDF",
       hash: "SHA-256",
@@ -47,14 +46,31 @@ async function encryptCredentials(payload: object, rootSecret: string, projectUr
     material,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt"],
+    usages,
   );
+}
+
+async function encryptCredentials(payload: object, rootSecret: string, projectUrl: string) {
+  const key = await deriveCredentialKey(rootSecret, projectUrl, ["encrypt"]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const plaintext = encoder.encode(JSON.stringify(payload));
   const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext),
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(payload))),
   );
   return "v1." + toBase64(iv) + "." + toBase64(ciphertext);
+}
+
+async function decryptCredentials(ciphertext: string, rootSecret: string, projectUrl: string) {
+  const [version, ivText, dataText] = ciphertext.split(".");
+  if (version !== "v1" || !ivText || !dataText) throw new Error("Kayıtlı API bilgisi çözümlenemedi.");
+  const key = await deriveCredentialKey(rootSecret, projectUrl, ["decrypt"]);
+  const plaintext = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64(ivText) },
+    key,
+    fromBase64(dataText),
+  );
+  return JSON.parse(new TextDecoder().decode(plaintext)) as {
+    supplierId: string; apiKey: string; apiSecret: string;
+  };
 }
 
 function friendlyTrendyolError(status: number): string {
@@ -62,7 +78,47 @@ function friendlyTrendyolError(status: number): string {
   if (status === 403) return "Trendyol erişimi reddetti. User-Agent veya API yetkisini kontrol edin.";
   if (status === 429) return "Trendyol istek sınırına ulaşıldı. Birkaç dakika sonra tekrar deneyin.";
   if (status >= 500) return "Trendyol sunucusu şu anda yanıt vermiyor. Daha sonra tekrar deneyin.";
-  return `Trendyol bağlantı testi başarısız oldu (HTTP ${status}).`;
+  return "Trendyol isteği başarısız oldu (HTTP " + status + ").";
+}
+
+function localDate(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "00";
+  return part("year") + "-" + part("month") + "-" + part("day");
+}
+
+async function stableUuid(value: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = Array.from(digest.slice(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" +
+    hex.slice(16, 20) + "-" + hex.slice(20);
+}
+
+function amount(value: unknown): number {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
+}
+
+function packageStatus(pkg: any): string {
+  return String(pkg?.shipmentPackageStatus ?? pkg?.status ?? "").toLowerCase();
+}
+
+function recordType(pkg: any, line: any): "sale" | "return" | "cancellation" {
+  const packageState = packageStatus(pkg);
+  const lineState = String(line?.orderLineItemStatusName ?? "").toLowerCase();
+  if (packageState === "cancelled" || packageState === "unsupplied" || lineState === "cancelled") return "cancellation";
+  if (packageState === "returned" || lineState === "returned") return "return";
+  return "sale";
+}
+
+async function fetchJson(url: string, headers: Record<string, string>, init?: RequestInit) {
+  const response = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(friendlyTrendyolError(response.status));
+  return await response.json();
 }
 
 Deno.serve(async (req: Request) => {
@@ -71,143 +127,285 @@ Deno.serve(async (req: Request) => {
   const url = Deno.env.get("SUPABASE_URL");
   const publishableKey = getKeyEnv("SUPABASE_PUBLISHABLE_KEYS") || Deno.env.get("SUPABASE_ANON_KEY") || "";
   const rootSecret = getKeyEnv("SUPABASE_SECRET_KEYS") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-
-  if (!url || !publishableKey || !rootSecret) {
-    return json({ error: "Server configuration is incomplete" }, 500);
-  }
+  if (!url || !publishableKey || !rootSecret) return json({ error: "Sunucu yapılandırması eksik." }, 500);
 
   const pathname = new URL(req.url).pathname;
   if (req.method === "GET" && pathname.endsWith("/health")) {
-    return json({ ok: true, service: "smart-business-center-api", version: 2 });
+    return json({ ok: true, service: "smart-business-center-api", version: 3 });
   }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const authorization = req.headers.get("Authorization") || "";
-  if (!authorization.startsWith("Bearer ")) return json({ error: "Authentication required" }, 401);
-
+  if (!authorization.startsWith("Bearer ")) return json({ error: "Oturum gerekli." }, 401);
   const authHeaders = { apikey: publishableKey, Authorization: authorization };
   const userResponse = await fetch(url + "/auth/v1/user", { headers: authHeaders });
-  if (!userResponse.ok) return json({ error: "Invalid or expired session" }, 401);
-
-  let user: { id?: string };
-  try {
-    user = await userResponse.json();
-  } catch {
-    return json({ error: "Unable to validate session" }, 401);
-  }
-  if (!user.id) return json({ error: "Invalid session" }, 401);
+  if (!userResponse.ok) return json({ error: "Oturum geçersiz veya süresi dolmuş." }, 401);
+  const user = await userResponse.json();
+  if (!user?.id) return json({ error: "Kullanıcı doğrulanamadı." }, 401);
 
   let body: {
-    action?: string;
-    store_id?: string;
-    supplier_id?: string;
-    api_key?: string;
-    api_secret?: string;
+    action?: string; store_id?: string; supplier_id?: string; api_key?: string; api_secret?: string; days?: number;
   };
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
-  }
+  try { body = await req.json(); } catch { return json({ error: "Geçersiz istek gövdesi." }, 400); }
 
-  if (body.action !== "connect_trendyol" && body.action !== "save_trendyol_credentials") {
-    return json({ error: "Unsupported action" }, 400);
+  const action = body.action;
+  if (action !== "connect_trendyol" && action !== "save_trendyol_credentials" && action !== "sync_trendyol_orders") {
+    return json({ error: "Desteklenmeyen işlem." }, 400);
   }
   if (!body.store_id || !/^[0-9a-f-]{36}$/i.test(body.store_id)) {
-    return json({ error: "A valid store_id is required" }, 400);
-  }
-  if (!body.api_key?.trim() || !body.api_secret?.trim()) {
-    return json({ error: "API key and API secret are required" }, 400);
-  }
-  if (body.api_key.length > 1000 || body.api_secret.length > 1000) {
-    return json({ error: "Credential field is too long" }, 400);
-  }
-  const supplierId = body.supplier_id?.trim() || "";
-  if (!/^\d{3,20}$/.test(supplierId)) {
-    return json({ error: "Geçerli sayısal Satıcı ID / Supplier ID girin." }, 400);
+    return json({ error: "Geçerli mağaza kimliği gerekli." }, 400);
   }
 
   const storeUrl = new URL(url + "/rest/v1/stores");
   storeUrl.searchParams.set("id", "eq." + body.store_id);
-  storeUrl.searchParams.set("select", "id,marketplace");
+  storeUrl.searchParams.set("select", "id,marketplace,organization_id");
   storeUrl.searchParams.set("limit", "1");
-  const storeResponse = await fetch(storeUrl, {
-    headers: { ...authHeaders, Accept: "application/json" },
-  });
-  if (!storeResponse.ok) return json({ error: "Unable to verify store access" }, 403);
+  const storeResponse = await fetch(storeUrl, { headers: { ...authHeaders, Accept: "application/json" } });
+  if (!storeResponse.ok) return json({ error: "Mağaza erişimi doğrulanamadı." }, 403);
   const stores = await storeResponse.json();
   if (!Array.isArray(stores) || stores.length !== 1 || stores[0].marketplace !== "Trendyol") {
-    return json({ error: "Trendyol store not found or access denied" }, 403);
+    return json({ error: "Trendyol mağazası bulunamadı veya erişim izniniz yok." }, 403);
   }
+  const store = stores[0];
 
-  // Verify credentials against the current Order V2 endpoint before persisting them.
-  const now = Date.now();
-  const testUrl = new URL(
-    `https://apigw.trendyol.com/integration/order/sellers/${supplierId}/v2/orders`,
-  );
-  testUrl.searchParams.set("startDate", String(now - 7 * 24 * 60 * 60 * 1000));
-  testUrl.searchParams.set("endDate", String(now));
-  testUrl.searchParams.set("page", "0");
-  testUrl.searchParams.set("size", "1");
-  testUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
-  testUrl.searchParams.set("orderByDirection", "DESC");
+  if (action === "connect_trendyol" || action === "save_trendyol_credentials") {
+    if (!body.api_key?.trim() || !body.api_secret?.trim()) return json({ error: "API Key ve API Secret gerekli." }, 400);
+    if (body.api_key.length > 1000 || body.api_secret.length > 1000) return json({ error: "API bilgisi alanı çok uzun." }, 400);
+    const supplierId = body.supplier_id?.trim() || "";
+    if (!/^\d{3,20}$/.test(supplierId)) return json({ error: "Geçerli sayısal Satıcı ID / Supplier ID girin." }, 400);
 
-  let trendyolResponse: Response;
-  try {
-    trendyolResponse = await fetch(testUrl, {
-      method: "GET",
-      headers: {
+    const now = Date.now();
+    const testUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + supplierId + "/v2/orders");
+    testUrl.searchParams.set("startDate", String(now - 7 * 24 * 60 * 60 * 1000));
+    testUrl.searchParams.set("endDate", String(now));
+    testUrl.searchParams.set("page", "0");
+    testUrl.searchParams.set("size", "1");
+    testUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
+    testUrl.searchParams.set("orderByDirection", "DESC");
+
+    let testResult: any;
+    try {
+      testResult = await fetchJson(testUrl.toString(), {
         Accept: "application/json",
         Authorization: "Basic " + btoa(body.api_key.trim() + ":" + body.api_secret.trim()),
         "User-Agent": supplierId + " - SelfIntegration",
-      },
-      signal: AbortSignal.timeout(15000),
+      });
+    } catch (error) {
+      return json({ ok: false, error: error instanceof Error ? error.message : "Trendyol bağlantısı kurulamadı." });
+    }
+
+    const encrypted = await encryptCredentials({
+      supplierId, apiKey: body.api_key.trim(), apiSecret: body.api_secret.trim(), savedAt: new Date().toISOString(),
+    }, rootSecret, url);
+
+    const saveResponse = await fetch(url + "/rest/v1/rpc/upsert_marketplace_secret", {
+      method: "POST",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_store_id: body.store_id, p_ciphertext: encrypted, p_key_version: 1 }),
     });
-  } catch {
-    return json({ ok: false, error: "Trendyol bağlantısına ulaşılamadı. Ağ bağlantısını kontrol edip tekrar deneyin." });
+    if (!saveResponse.ok) return json({ error: "Bağlantı doğrulandı ancak şifreli bilgiler kaydedilemedi." }, 500);
+
+    const statusResponse = await fetch(storeUrl, {
+      method: "PATCH",
+      headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ seller_id: supplierId, connection_status: "connected", updated_at: new Date().toISOString() }),
+    });
+    if (!statusResponse.ok) return json({ error: "API doğrulandı ve şifreli kaydedildi; mağaza durumu güncellenemedi." }, 500);
+
+    return json({
+      ok: true, store_id: body.store_id, supplier_id: supplierId,
+      sample_packages: Array.isArray(testResult?.content) ? testResult.content.length : 0,
+      message: "Trendyol bağlantısı doğrulandı; API bilgileri şifrelenerek kaydedildi.",
+    });
   }
 
-  if (!trendyolResponse.ok) {
-    return json({ ok: false, error: friendlyTrendyolError(trendyolResponse.status) });
-  }
-
-  let packageCount = 0;
-  try {
-    const result = await trendyolResponse.json();
-    packageCount = Array.isArray(result?.content) ? result.content.length : 0;
-  } catch {
-    return json({ ok: false, error: "Trendyol yanıtı okunamadı. API yanıt biçimi beklenenden farklı." });
-  }
-
-  const encrypted = await encryptCredentials(
-    {
-      supplierId,
-      apiKey: body.api_key.trim(),
-      apiSecret: body.api_secret.trim(),
-      savedAt: new Date().toISOString(),
-    },
-    rootSecret,
-    url,
-  );
-
-  const saveResponse = await fetch(url + "/rest/v1/rpc/upsert_marketplace_secret", {
+  const days = Math.min(30, Math.max(1, Math.floor(Number(body.days) || 30)));
+  const secretResponse = await fetch(url + "/rest/v1/rpc/get_marketplace_secret_for_user", {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      p_store_id: body.store_id,
-      p_ciphertext: encrypted,
-      p_key_version: 1,
-    }),
+    body: JSON.stringify({ p_store_id: body.store_id }),
   });
-  if (!saveResponse.ok) {
-    return json({ error: "Bağlantı doğrulandı ancak şifreli bilgiler kaydedilemedi. Lütfen tekrar deneyin." }, 500);
+  if (!secretResponse.ok) return json({ error: "Şifreli Trendyol bağlantı kaydı okunamadı." }, 500);
+  const secretRows = await secretResponse.json();
+  const secretRow = Array.isArray(secretRows) ? secretRows[0] : secretRows;
+  if (!secretRow?.credential_ciphertext) return json({ error: "Bu mağaza için kayıtlı Trendyol API bağlantısı bulunamadı." }, 400);
+
+  let credentials: { supplierId: string; apiKey: string; apiSecret: string };
+  try {
+    credentials = await decryptCredentials(secretRow.credential_ciphertext, rootSecret, url);
+  } catch {
+    return json({ error: "Kayıtlı API bilgileri çözümlenemedi. Bağlantıyı yeniden test edip kaydedin." }, 500);
   }
+
+  const trendyolHeaders = {
+    Accept: "application/json",
+    Authorization: "Basic " + btoa(credentials.apiKey + ":" + credentials.apiSecret),
+    "User-Agent": credentials.supplierId + " - SelfIntegration",
+  };
+  const endDate = Date.now();
+  const startDate = endDate - days * 24 * 60 * 60 * 1000;
+  const packagesById = new Map<string, any>();
+  let totalElements = 0;
+
+  try {
+    // Keep every request inside the documented two-week query window.
+    const maxWindowMs = 13 * 24 * 60 * 60 * 1000;
+    for (let windowStart = startDate; windowStart < endDate; windowStart += maxWindowMs) {
+      const windowEnd = Math.min(windowStart + maxWindowMs, endDate);
+      let page = 0;
+      let windowTotal = 0;
+      while (page < 50) {
+        const orderUrl = new URL("https://apigw.trendyol.com/integration/order/sellers/" + credentials.supplierId + "/v2/orders");
+        orderUrl.searchParams.set("startDate", String(windowStart));
+        orderUrl.searchParams.set("endDate", String(windowEnd));
+        orderUrl.searchParams.set("page", String(page));
+        orderUrl.searchParams.set("size", "200");
+        orderUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
+        orderUrl.searchParams.set("orderByDirection", "DESC");
+        const result = await fetchJson(orderUrl.toString(), trendyolHeaders);
+        const content = Array.isArray(result?.content) ? result.content : [];
+        windowTotal = Number(result?.totalElements ?? content.length);
+        if (windowTotal > 10000) {
+          return json({ error: "Seçilen tarih diliminde 10.000'den fazla paket var. Daha kısa tarih aralığıyla aktarım yapılmalı.", total_packages: windowTotal }, 422);
+        }
+        for (const pkg of content) {
+          const packageId = String(pkg?.shipmentPackageId ?? pkg?.id ?? "");
+          if (packageId) packagesById.set(packageId, pkg);
+        }
+        if (content.length < 200 || page + 1 >= Number(result?.totalPages ?? 1)) break;
+        page += 1;
+      }
+      totalElements += windowTotal;
+    }
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Trendyol siparişleri alınamadı." }, 502);
+  }
+  const packages = [...packagesById.values()];
+
+  const productUrl = new URL(url + "/rest/v1/products");
+  productUrl.searchParams.set("store_id", "eq." + body.store_id);
+  productUrl.searchParams.set("select", "id");
+  const variantUrl = new URL(url + "/rest/v1/product_variants");
+  variantUrl.searchParams.set("organization_id", "eq." + store.organization_id);
+  variantUrl.searchParams.set("select", "product_id,barcode,sku");
+  const [productResponse, variantResponse] = await Promise.all([
+    fetch(productUrl, { headers: authHeaders }),
+    fetch(variantUrl, { headers: authHeaders }),
+  ]);
+  if (!productResponse.ok || !variantResponse.ok) return json({ error: "Mağaza ürün eşleştirmeleri okunamadı." }, 500);
+  const productRows = await productResponse.json();
+  const variantRows = await variantResponse.json();
+  const storeProductIds = new Set((productRows ?? []).map((row: any) => String(row.id)));
+  const productByCode = new Map<string, string>();
+  for (const variant of variantRows ?? []) {
+    const productId = String(variant.product_id ?? "");
+    if (!storeProductIds.has(productId)) continue;
+    if (variant.barcode) productByCode.set(String(variant.barcode).trim().toLowerCase(), productId);
+    if (variant.sku) productByCode.set(String(variant.sku).trim().toLowerCase(), productId);
+  }
+
+  const recordsById = new Map<string, any>();
+  let matchedProducts = 0;
+  let unmatchedProducts = 0;
+  let saleLines = 0;
+  let cancellationLines = 0;
+  let returnLines = 0;
+
+  for (const pkg of packages) {
+    const state = packageStatus(pkg);
+    if (state === "unpacked" || state === "awaiting") continue;
+    const lines = Array.isArray(pkg?.lines) ? pkg.lines : [];
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      const quantity = Math.max(1, Math.floor(Number(line?.quantity) || 1));
+      const type = recordType(pkg, line);
+      const unitGross = amount(line?.lineGrossAmount) ||
+        amount(line?.lineUnitPrice) + amount(line?.lineSellerDiscount) / quantity + amount(line?.lineTyDiscount) / quantity;
+      const gross = Math.round(unitGross * quantity * 100) / 100;
+      if (gross <= 0) continue;
+
+      const details = Array.isArray(line?.discountDetails) ? line.discountDetails : [];
+      const detailSellerDiscount = details.reduce((sum: number, item: any) => sum + amount(item?.lineItemSellerDiscount), 0);
+      const sellerDiscount = Math.min(gross, Math.round((detailSellerDiscount || amount(line?.lineSellerDiscount)) * 100) / 100);
+      const barcode = String(line?.barcode ?? "").trim();
+      const stockCode = String(line?.stockCode ?? "").trim();
+      const productId = productByCode.get(barcode.toLowerCase()) ?? productByCode.get(stockCode.toLowerCase()) ?? null;
+      if (productId) matchedProducts += 1;
+      else unmatchedProducts += 1;
+
+      const packageId = String(pkg?.shipmentPackageId ?? pkg?.id ?? "");
+      const lineId = String(line?.lineId ?? line?.id ?? (barcode + "-" + index));
+      const stableId = await stableUuid(body.store_id + "|" + packageId + "|" + lineId);
+      const orderNumberRaw = String(pkg?.orderNumber ?? packageId);
+      const orderNumber = orderNumberRaw.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50) || packageId.slice(0, 50);
+      const tyDiscount = amount(line?.lineTyDiscount);
+      const commissionRate = amount(line?.commission);
+      const noteParts = [
+        "Paket:" + packageId,
+        "Durum:" + String(pkg?.shipmentPackageStatus ?? pkg?.status ?? "Bilinmiyor"),
+        barcode ? "Barkod:" + barcode : "",
+        stockCode ? "Stok:" + stockCode : "",
+        tyDiscount ? "Trendyol katkısı:" + tyDiscount.toFixed(2) + " TL (satıcı indirimi değildir)" : "",
+        commissionRate ? "Komisyon oranı:%" + commissionRate : "",
+      ].filter(Boolean);
+      const note = noteParts.join(" | ").slice(0, 300);
+
+      recordsById.set(stableId, {
+        id: stableId,
+        record_type: type,
+        order_number: orderNumber,
+        record_date: localDate(Number(pkg?.orderDate ?? pkg?.createdDate ?? pkg?.lastModifiedDate ?? endDate)),
+        product_id: productId,
+        quantity,
+        gross_amount: gross,
+        discount_amount: sellerDiscount,
+        coupon_amount: 0,
+        commission_amount: 0,
+        shipping_amount: 0,
+        withholding_amount: 0,
+        note,
+      });
+      if (type === "sale") saleLines += 1;
+      else if (type === "cancellation") cancellationLines += 1;
+      else returnLines += 1;
+    }
+  }
+
+  const records = [...recordsById.values()];
+  try {
+    for (let offset = 0; offset < records.length; offset += 250) {
+      const batch = records.slice(offset, offset + 250);
+      const importResponse = await fetch(url + "/rest/v1/rpc/import_trendyol_order_records", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_store_id: body.store_id, p_records: batch }),
+      });
+      if (!importResponse.ok) {
+        const message = await importResponse.text();
+        throw new Error("Sipariş kayıtları kaydedilemedi: " + message.slice(0, 250));
+      }
+    }
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Siparişler kaydedilemedi." }, 500);
+  }
+
+  await fetch(storeUrl, {
+    method: "PATCH",
+    headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ connection_status: "connected", last_synced_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+  });
 
   return json({
     ok: true,
-    store_id: body.store_id,
-    supplier_id: supplierId,
-    sample_packages: packageCount,
-    message: "Trendyol bağlantısı doğrulandı; API bilgileri şifrelenerek kaydedildi.",
+    days,
+    packages_received: packages.length,
+    total_packages: totalElements,
+    lines_imported: records.length,
+    sale_lines: saleLines,
+    cancellation_lines: cancellationLines,
+    return_lines: returnLines,
+    matched_products: matchedProducts,
+    unmatched_products: unmatchedProducts,
+    message: "Trendyol siparişleri buluta aktarıldı. Var olan manuel kayıtlar ve finans hareketleri korunmuştur.",
   });
 });
