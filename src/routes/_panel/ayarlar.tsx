@@ -313,7 +313,10 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);\n  const [isSyncingProducts, setIsSyncingProducts] = useState(false);\n  const [productSyncError, setProductSyncError] = useState<string | null>(null);\n  const [productSyncResult, setProductSyncResult] = useState<{products_received:number;variants_received:number;matched_order_lines:number} | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingProducts, setIsSyncingProducts] = useState(false);
+  const [productSyncError, setProductSyncError] = useState<string | null>(null);
+  const [productSyncResult, setProductSyncResult] = useState<{products_received:number;variants_received:number;matched_order_lines:number} | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
