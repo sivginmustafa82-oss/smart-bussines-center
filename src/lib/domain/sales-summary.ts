@@ -9,7 +9,8 @@ export interface SalesSummary {
   gross: QtyAmount;
   returns: QtyAmount;
   cancellations: QtyAmount;
-  /** net = gross − returns − cancellations, for units and amounts alike. */
+  discounts: { amount: number };
+  /** Trendyol-style net = gross − cancellations − returns − net discounts. */
   net: QtyAmount;
   lines: { sales: number; returns: number; cancellations: number };
 }
@@ -17,31 +18,45 @@ export interface SalesSummary {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * Store sales summary. Amounts are gross (KDV dahil müşteri fiyatı × adet) line amounts;
- * discounts, commission and other costs are intentionally not deducted here
- * — those belong to the profitability statement.
+ * Uses the same order-line ledger and deduction order as the profitability
+ * calculation: sale discounts/coupons increase deductions; reversed discounts
+ * on returns/cancellations reduce them.
  */
 export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
   const gross = { units: 0, amount: 0 };
   const returns = { units: 0, amount: 0 };
   const cancellations = { units: 0, amount: 0 };
+  let discounts = 0;
   const lines = { sales: 0, returns: 0, cancellations: 0 };
+
   for (const r of records) {
-    const bucket = r.type === "sale" ? gross : r.type === "return" ? returns : cancellations;
-    bucket.units += r.quantity;
-    bucket.amount += r.grossAmount;
-    if (r.type === "sale") lines.sales += 1;
-    else if (r.type === "return") lines.returns += 1;
-    else lines.cancellations += 1;
+    const disc = r.discountAmount + r.couponAmount;
+    if (r.type === "sale") {
+      gross.units += r.quantity;
+      gross.amount += r.grossAmount;
+      discounts += disc;
+      lines.sales += 1;
+    } else if (r.type === "return") {
+      returns.units += r.quantity;
+      returns.amount += r.grossAmount;
+      discounts -= disc;
+      lines.returns += 1;
+    } else {
+      cancellations.units += r.quantity;
+      cancellations.amount += r.grossAmount;
+      discounts -= disc;
+      lines.cancellations += 1;
+    }
   }
-  const fix = (x: QtyAmount): QtyAmount => ({ units: x.units, amount: round2(x.amount) });
+
   return {
-    gross: fix(gross),
-    returns: fix(returns),
-    cancellations: fix(cancellations),
+    gross: { units: gross.units, amount: round2(gross.amount) },
+    returns: { units: returns.units, amount: round2(returns.amount) },
+    cancellations: { units: cancellations.units, amount: round2(cancellations.amount) },
+    discounts: { amount: round2(discounts) },
     net: {
       units: gross.units - returns.units - cancellations.units,
-      amount: round2(gross.amount - returns.amount - cancellations.amount),
+      amount: round2(gross.amount - returns.amount - cancellations.amount - discounts),
     },
     lines,
   };
