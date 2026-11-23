@@ -61,7 +61,7 @@ function Orders() {
   const count = (t: RecordType) => records.filter((r) => r.type === t).length;
   const exportExcel = () => {
     const data = buildOrderExportRows(rows, ws.stores, ws.products);
-    const sheet = XLSX.utils.aoa_to_sheet([ORDER_EXPORT_COLUMNS, ...data]);
+    const sheet = XLSX.utils.aoa_to_sheet([[...ORDER_EXPORT_COLUMNS], ...data]);
     sheet["!cols"] = ORDER_EXPORT_COLUMNS.map((h, i) => ({
       wch: Math.max(h.length + 2, ...data.slice(0, 100).map((row) => String(row[i] ?? "").length + 2), 12),
     }));
