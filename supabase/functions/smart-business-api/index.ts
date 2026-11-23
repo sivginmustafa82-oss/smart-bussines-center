@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
 
   const pathname = new URL(req.url).pathname;
   if (req.method === "GET" && pathname.endsWith("/health")) {
-    return json({ ok: true, service: "smart-business-center-api", version: 3 });
+    return json({ ok: true, service: "smart-business-center-api", version: 4 });
   }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -217,6 +217,24 @@ Deno.serve(async (req: Request) => {
       sample_packages: Array.isArray(testResult?.content) ? testResult.content.length : 0,
       message: "Trendyol bağlantısı doğrulandı; API bilgileri şifrelenerek kaydedildi.",
     });
+  }
+
+  const days = Math.min(30, Math.max(1, Math.floor(Number(body.days) || 30)));
+  const secretResponse = await fetch(url + "/rest/v1/rpc/get_marketplace_secret_for_user", {
+    method: "POST",
+    headers: { ...authHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_store_id: body.store_id }),
+  });
+  if (!secretResponse.ok) return json({ error: "Şifreli Trendyol bağlantı kaydı okunamadı." }, 500);
+  const secretRows = await secretResponse.json();
+  const secretRow = Array.isArray(secretRows) ? secretRows[0] : secretRows;
+  if (!secretRow?.credential_ciphertext) return json({ error: "Bu mağaza için kayıtlı Trendyol API bağlantısı bulunamadı." }, 400);
+
+  let credentials: { supplierId: string; apiKey: string; apiSecret: string };
+  try {
+    credentials = await decryptCredentials(secretRow.credential_ciphertext, rootSecret, url);
+  } catch {
+    return json({ error: "Kayıtlı API bilgileri çözümlenemedi. Bağlantıyı yeniden test edip kaydedin." }, 500);
   }
 
   if (action === "sync_trendyol_products") {
@@ -324,24 +342,6 @@ Deno.serve(async (req: Request) => {
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : "Ürünler kaydedilemedi." }, 500);
     }
-  }
-
-  const days = Math.min(30, Math.max(1, Math.floor(Number(body.days) || 30)));
-  const secretResponse = await fetch(url + "/rest/v1/rpc/get_marketplace_secret_for_user", {
-    method: "POST",
-    headers: { ...authHeaders, "Content-Type": "application/json" },
-    body: JSON.stringify({ p_store_id: body.store_id }),
-  });
-  if (!secretResponse.ok) return json({ error: "Şifreli Trendyol bağlantı kaydı okunamadı." }, 500);
-  const secretRows = await secretResponse.json();
-  const secretRow = Array.isArray(secretRows) ? secretRows[0] : secretRows;
-  if (!secretRow?.credential_ciphertext) return json({ error: "Bu mağaza için kayıtlı Trendyol API bağlantısı bulunamadı." }, 400);
-
-  let credentials: { supplierId: string; apiKey: string; apiSecret: string };
-  try {
-    credentials = await decryptCredentials(secretRow.credential_ciphertext, rootSecret, url);
-  } catch {
-    return json({ error: "Kayıtlı API bilgileri çözümlenemedi. Bağlantıyı yeniden test edip kaydedin." }, 500);
   }
 
   const trendyolHeaders = {
