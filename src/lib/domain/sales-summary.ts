@@ -42,6 +42,10 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
       discounts -= disc;
       lines.returns += 1;
     } else {
+      // Trendyol's gross sales includes cancelled order lines; cancellations are
+      // shown separately and deducted only when calculating net sales.
+      gross.units += r.quantity;
+      gross.amount += r.grossAmount;
       cancellations.units += r.quantity;
       cancellations.amount += r.grossAmount;
       discounts -= disc;
