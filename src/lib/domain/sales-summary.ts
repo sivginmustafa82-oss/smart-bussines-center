@@ -65,7 +65,7 @@ export function calculateSalesSummary(records: OrderRecord[]): SalesSummary {
     },
     net: {
       units: gross.units - returns.units - cancellations.units,
-      amount: round2(gross.amount - returns.amount - cancellations.amount - discounts),
+      amount: round2(gross.amount - returns.amount - cancellations.amount - (salesDiscounts - returnedDiscounts)),
     },
     lines,
   };
