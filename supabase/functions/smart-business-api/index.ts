@@ -593,6 +593,20 @@ Deno.serve(async (req: Request) => {
       originalSaleRows = await originalResponse.json();
     }
 
+    // Include sale lines collected in this same sync. They are not in order_records
+    // until the final import batch, so querying only the database misses them.
+    const currentSyncSales = [...recordsById.values()]
+      .filter((row: any) => row.record_type === "sale")
+      .map((row: any) => ({
+        order_number: row.order_number,
+        quantity: row.quantity,
+        gross_amount: row.gross_amount,
+        discount_amount: row.discount_amount,
+        coupon_amount: row.coupon_amount,
+        note: row.note,
+      }));
+    originalSaleRows = [...currentSyncSales, ...originalSaleRows];
+
     for (const item of acceptedClaimItems) {
       const lineMarker = item.orderLineItemId ? "Satır:" + item.orderLineItemId : "";
       const packageMarker = item.outboundPackageId ? "Paket:" + item.outboundPackageId : "";
