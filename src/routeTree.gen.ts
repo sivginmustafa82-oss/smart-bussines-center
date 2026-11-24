@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PanelRouteRouteImport } from './routes/_panel/route'
 import { Route as GirisRouteImport } from './routes/giris'
 import { Route as PanelAyarlarRouteImport } from './routes/_panel/ayarlar'
-import { Route as PanelGenelBakisRouteImport } from './routes/_panel/genel-bakis'
 import { Route as PanelGiderlerRouteImport } from './routes/_panel/giderler'
 import { Route as PanelKarlilikRouteImport } from './routes/_panel/karlilik'
 import { Route as PanelSiparislerRouteImport } from './routes/_panel/siparisler'
@@ -40,11 +39,6 @@ const GirisRoute = GirisRouteImport.update({
 const PanelAyarlarRoute = PanelAyarlarRouteImport.update({
   id: '/ayarlar',
   path: '/ayarlar',
-  getParentRoute: () => PanelRouteRoute,
-} as any)
-const PanelGenelBakisRoute = PanelGenelBakisRouteImport.update({
-  id: '/genel-bakis',
-  path: '/genel-bakis',
   getParentRoute: () => PanelRouteRoute,
 } as any)
 const PanelGiderlerRoute = PanelGiderlerRouteImport.update({
@@ -92,7 +86,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/giris': typeof GirisRoute
   '/ayarlar': typeof PanelAyarlarRoute
-  '/genel-bakis': typeof PanelGenelBakisRoute
   '/giderler': typeof PanelGiderlerRoute
   '/karlilik': typeof PanelKarlilikRoute
   '/siparisler': typeof PanelSiparislerRoute
@@ -122,7 +115,6 @@ export interface FileRoutesById {
   '/_panel': typeof PanelRouteRouteWithChildren
   '/giris': typeof GirisRoute
   '/_panel/ayarlar': typeof PanelAyarlarRoute
-  '/_panel/genel-bakis': typeof PanelGenelBakisRoute
   '/_panel/giderler': typeof PanelGiderlerRoute
   '/_panel/karlilik': typeof PanelKarlilikRoute
   '/_panel/siparisler': typeof PanelSiparislerRoute
@@ -138,7 +130,6 @@ export interface FileRouteTypes {
     | '/'
     | '/giris'
     | '/ayarlar'
-    | '/genel-bakis'
     | '/giderler'
     | '/karlilik'
     | '/siparisler'
@@ -167,7 +158,6 @@ export interface FileRouteTypes {
     | '/_panel'
     | '/giris'
     | '/_panel/ayarlar'
-    | '/_panel/genel-bakis'
     | '/_panel/giderler'
     | '/_panel/karlilik'
     | '/_panel/siparisler'
@@ -212,13 +202,6 @@ declare module '@tanstack/react-router' {
       path: '/ayarlar'
       fullPath: '/ayarlar'
       preLoaderRoute: typeof PanelAyarlarRouteImport
-      parentRoute: typeof PanelRouteRoute
-    }
-    '/_panel/genel-bakis': {
-      id: '/_panel/genel-bakis'
-      path: '/genel-bakis'
-      fullPath: '/genel-bakis'
-      preLoaderRoute: typeof PanelGenelBakisRouteImport
       parentRoute: typeof PanelRouteRoute
     }
     '/_panel/giderler': {
@@ -282,7 +265,6 @@ declare module '@tanstack/react-router' {
 
 interface PanelRouteRouteChildren {
   PanelAyarlarRoute: typeof PanelAyarlarRoute
-  PanelGenelBakisRoute: typeof PanelGenelBakisRoute
   PanelGiderlerRoute: typeof PanelGiderlerRoute
   PanelKarlilikRoute: typeof PanelKarlilikRoute
   PanelSiparislerRoute: typeof PanelSiparislerRoute
@@ -295,7 +277,6 @@ interface PanelRouteRouteChildren {
 
 const PanelRouteRouteChildren: PanelRouteRouteChildren = {
   PanelAyarlarRoute: PanelAyarlarRoute,
-  PanelGenelBakisRoute: PanelGenelBakisRoute,
   PanelGiderlerRoute: PanelGiderlerRoute,
   PanelKarlilikRoute: PanelKarlilikRoute,
   PanelSiparislerRoute: PanelSiparislerRoute,
