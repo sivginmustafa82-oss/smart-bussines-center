@@ -51,7 +51,7 @@ function Landing() {
           <span className="font-display text-lg font-bold">Smart Bussines Center</span>
         </div>
         <Button asChild variant="outline">
-          <Link to={signedIn ? "/genel-bakis" : "/giris"}>{signedIn ? "Panele git" : "Giriş yap"}</Link>
+          <Link to={signedIn ? "/magaza-ozeti" : "/giris"}>{signedIn ? "Panele git" : "Giriş yap"}</Link>
         </Button>
       </header>
 
@@ -71,7 +71,7 @@ function Landing() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="hero">
-              <Link to={signedIn ? "/genel-bakis" : "/giris"}>
+              <Link to={signedIn ? "/magaza-ozeti" : "/giris"}>
                 {signedIn ? "Panele git" : "Ücretsiz hesap oluştur"} <ArrowRight />
               </Link>
             </Button>
