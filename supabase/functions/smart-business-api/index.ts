@@ -2,7 +2,7 @@ import { istanbulDateFromEpoch, istanbulDateTimeFromEpoch, resolveSyncRange, tre
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-cron-secret",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -135,7 +135,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const cronSecret = req.headers.get("x-cron-secret") || "";
-  const serviceRoleKey = getKeyEnv("SUPABASE_SECRET_KEYS") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || getKeyEnv("SUPABASE_SECRET_KEYS") || "";
   let isScheduledSync = false;
   if (cronSecret) {
     if (!serviceRoleKey) return json({ error: "Zamanlanmış aktarım sunucu anahtarı eksik." }, 500);
