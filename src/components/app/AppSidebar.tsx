@@ -2,7 +2,6 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
   FileSpreadsheet,
-  LayoutDashboard,
   LogOut,
   Package,
   Settings,
@@ -29,7 +28,6 @@ import { BrandMark } from "./BrandMark";
 
 export const NAV_ITEMS = [
   { title: "Mağaza Özeti", url: "/magaza-ozeti", icon: BarChart3 },
-  { title: "Genel Bakış", url: "/genel-bakis", icon: LayoutDashboard },
   { title: "Mağazalar", url: "/magazalar", icon: Store },
   { title: "Ürünler", url: "/urunler", icon: Package },
   { title: "Siparişler", url: "/siparisler", icon: ShoppingCart },
@@ -51,7 +49,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="px-3 py-4">
-        <Link to="/genel-bakis" className="flex items-center gap-2.5" onClick={() => setOpenMobile(false)}>
+        <Link to="/magaza-ozeti" className="flex items-center gap-2.5" onClick={() => setOpenMobile(false)}>
           <BrandMark />
           {!collapsed && (
             <div className="min-w-0 leading-tight">
