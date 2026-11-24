@@ -60,9 +60,10 @@ export function filterExpenses(expenses: Expense[], f: Filters): Expense[] {
  * Transparent profitability calculation.
  *   netSales   = grossSales − cancellations − returns − discounts
  *   netProfit  = netSales − commission − shipping − advertising − taxes − productCost − otherExpenses
- * Return/cancellation lines reverse discount, coupon, commission and withholding;
- * their shipping is an extra cost. Returned/cancelled units are assumed back in stock,
- * so their product cost is reversed.
+ * Gross sales includes cancelled order lines; cancellations are then deducted separately.
+ * Approved returns reverse the related seller discount, commission and withholding.
+ * Cancellation discounts are excluded from the seller-discount headline. Return/cancellation
+ * shipping is an extra cost, and returned/cancelled units are assumed back in stock.
  */
 export function calculateProfit(
   records: OrderRecord[],
@@ -89,8 +90,12 @@ export function calculateProfit(
     cancelledUnits: 0,
   };
   const sources = { manual: 0, imported: 0 };
+  const periodSaleOrders = new Set(records.filter((r) => r.type === "sale").map((r) => r.orderNumber));
 
   for (const r of records) {
+    // A return belongs to the original sale period, not the later approval date.
+    // Ignore claims whose original sale is not present in the selected period.
+    if (r.type === "return" && !periodSaleOrders.has(r.orderNumber)) continue;
     sources[r.source] += 1;
     const unitCost = r.productId ? (productMap.get(r.productId)?.unitCost ?? null) : null;
     const lineCost = unitCost == null ? 0 : unitCost * r.quantity;
@@ -114,9 +119,12 @@ export function calculateProfit(
       } else {
         counts.cancellations += 1;
         counts.cancelledUnits += r.quantity;
+        grossSales += r.grossAmount;
         cancellations += r.grossAmount;
       }
-      discounts -= disc;
+      // Only approved returns reverse seller discounts. Cancellation discounts
+      // are not included in Trendyol's seller-discount headline.
+      if (r.type === "return") discounts -= disc;
       commission -= r.commissionAmount;
       taxes -= r.withholdingAmount;
       productCost -= lineCost;
