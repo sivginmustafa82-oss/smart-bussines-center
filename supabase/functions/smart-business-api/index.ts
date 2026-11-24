@@ -639,7 +639,8 @@ Deno.serve(async (req: Request) => {
   try {
     for (let offset = 0; offset < records.length; offset += 250) {
       const batch = records.slice(offset, offset + 250);
-      const importResponse = await fetch(url + "/rest/v1/rpc/import_trendyol_order_records", {
+      const importRpc = isScheduledSync ? "import_trendyol_order_records_for_cron" : "import_trendyol_order_records";
+      const importResponse = await fetch(url + "/rest/v1/rpc/" + importRpc, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ p_store_id: body.store_id, p_records: batch }),
