@@ -586,7 +586,7 @@ Deno.serve(async (req: Request) => {
       originalUrl.searchParams.set("store_id", "eq." + body.store_id);
       originalUrl.searchParams.set("record_type", "eq.sale");
       originalUrl.searchParams.set("order_number", "in.(" + orderNumbers.join(",") + ")");
-      originalUrl.searchParams.set("select", "order_number,quantity,gross_amount,discount_amount,coupon_amount,note");
+      originalUrl.searchParams.set("select", "order_number,record_date,quantity,gross_amount,discount_amount,coupon_amount,note");
       originalUrl.searchParams.set("limit", "1000");
       const originalResponse = await fetch(originalUrl, { headers: authHeaders });
       if (!originalResponse.ok) throw new Error("İade indirimi için asıl sipariş satırları okunamadı.");
@@ -599,6 +599,7 @@ Deno.serve(async (req: Request) => {
       .filter((row: any) => row.record_type === "sale")
       .map((row: any) => ({
         order_number: row.order_number,
+        record_date: row.record_date,
         quantity: row.quantity,
         gross_amount: row.gross_amount,
         discount_amount: row.discount_amount,
@@ -635,7 +636,8 @@ Deno.serve(async (req: Request) => {
       const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + item.claimId + "|" + item.id);
       recordsById.set(stableId, {
         id: stableId, record_type: "return", order_number: item.orderNumber,
-        record_date: localDate(item.approvedAt), product_id: item.productId, quantity: item.quantity,
+        // Store returns against the original sale date, matching Trendyol store-summary reporting.
+        record_date: matchingSale?.record_date ?? localDate(item.approvedAt), product_id: item.productId, quantity: item.quantity,
         gross_amount: returnGross, discount_amount: discountAmount, coupon_amount: couponAmount,
         commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
         note: ("Onaylı Trendyol iadesi | Talep:" + item.claimId + " | Kalem:" + item.id +
