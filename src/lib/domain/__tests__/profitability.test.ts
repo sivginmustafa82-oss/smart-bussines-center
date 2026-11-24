@@ -26,7 +26,7 @@ describe("calculateProfit", () => {
     const records = [
       rec({ quantity: 2, grossAmount: 1000, discountAmount: 50, couponAmount: 30, commissionAmount: 150, shippingAmount: 40, withholdingAmount: 10 }),
       rec({ type: "return", quantity: 1, grossAmount: 500, discountAmount: 25, couponAmount: 15, commissionAmount: 75, shippingAmount: 20, withholdingAmount: 5 }),
-      rec({ type: "cancellation", productId: "p1", quantity: 1, grossAmount: 200 }),
+      rec({ type: "cancellation", productId: "p1", quantity: 1, grossAmount: 200, discountAmount: 20, couponAmount: 10 }),
     ];
     const expenses = [
       exp({ category: "reklam", amount: 60 }),
@@ -35,18 +35,30 @@ describe("calculateProfit", () => {
       exp({ category: "personel", amount: 100 }),
     ];
     const b = calculateProfit(records, expenses, products);
-    expect(b.grossSales).toBe(1000);
+    expect(b.grossSales).toBe(1200); // cancelled order lines are included in gross
     expect(b.returns).toBe(500);
     expect(b.cancellations).toBe(200);
     expect(b.discounts).toBe(40); // 80 − 40 reversed
-    expect(b.netSales).toBe(260); // 1000 − 200 − 500 − 40
+    expect(b.netSales).toBe(460); // 1200 − 200 − 500 − 40
     expect(b.commission).toBe(75); // 150 − 75 refunded
     expect(b.shipping).toBe(65); // 40 + 20 return shipping + 5 expense
     expect(b.advertising).toBe(60);
     expect(b.taxes).toBe(12); // 10 − 5 + 7
     expect(b.productCost).toBe(0); // 2×100 − 1×100 − 1×100
     expect(b.otherExpenses).toBe(100);
-    expect(b.netProfit).toBe(-52); // 260 − 75 − 65 − 60 − 12 − 0 − 100
+    expect(b.netProfit).toBe(148); // 460 − 75 − 65 − 60 − 12 − 0 − 100
+  });
+
+  it("ignores returns when the original sale is outside the selected period", () => {
+    const b = calculateProfit([
+      rec({ orderNumber: "in-period", grossAmount: 100 }),
+      rec({ type: "return", orderNumber: "outside-period", grossAmount: 50 }),
+      rec({ type: "cancellation", orderNumber: "in-period", grossAmount: 20 }),
+    ], [], products);
+    expect(b.grossSales).toBe(120);
+    expect(b.cancellations).toBe(20);
+    expect(b.returns).toBe(0);
+    expect(b.netSales).toBe(100);
   });
 
   it("counts sale lines with missing unit cost", () => {
