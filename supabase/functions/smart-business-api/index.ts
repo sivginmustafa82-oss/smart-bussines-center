@@ -134,13 +134,33 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const authorization = req.headers.get("Authorization") || "";
-  if (!authorization.startsWith("Bearer ")) return json({ error: "Oturum gerekli." }, 401);
-  const authHeaders = { apikey: publishableKey, Authorization: authorization };
-  const userResponse = await fetch(url + "/auth/v1/user", { headers: authHeaders });
-  if (!userResponse.ok) return json({ error: "Oturum geçersiz veya süresi dolmuş." }, 401);
-  const user = await userResponse.json();
-  if (!user?.id) return json({ error: "Kullanıcı doğrulanamadı." }, 401);
+  const cronSecret = req.headers.get("x-cron-secret") || "";
+  const serviceRoleKey = getKeyEnv("SUPABASE_SECRET_KEYS") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  let isScheduledSync = false;
+  if (cronSecret) {
+    if (!serviceRoleKey) return json({ error: "Zamanlanmış aktarım sunucu anahtarı eksik." }, 500);
+    const validation = await fetch(url + "/rest/v1/rpc/validate_order_sync_cron_secret", {
+      method: "POST",
+      headers: { apikey: serviceRoleKey, Authorization: "Bearer " + serviceRoleKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_secret: cronSecret }),
+    });
+    if (!validation.ok || await validation.json().catch(() => false) !== true) {
+      return json({ error: "Zamanlanmış aktarım doğrulanamadı." }, 401);
+    }
+    isScheduledSync = true;
+  }
+  let authHeaders: Record<string, string>;
+  if (isScheduledSync) {
+    authHeaders = { apikey: serviceRoleKey, Authorization: "Bearer " + serviceRoleKey };
+  } else {
+    const authorization = req.headers.get("Authorization") || "";
+    if (!authorization.startsWith("Bearer ")) return json({ error: "Oturum gerekli." }, 401);
+    authHeaders = { apikey: publishableKey, Authorization: authorization };
+    const userResponse = await fetch(url + "/auth/v1/user", { headers: authHeaders });
+    if (!userResponse.ok) return json({ error: "Oturum geçersiz veya süresi dolmuş." }, 401);
+    const user = await userResponse.json();
+    if (!user?.id) return json({ error: "Kullanıcı doğrulanamadı." }, 401);
+  }
 
   let body: {
     action?: string; store_id?: string; supplier_id?: string; api_key?: string; api_secret?: string; days?: number;
@@ -152,19 +172,23 @@ Deno.serve(async (req: Request) => {
   if (action !== "connect_trendyol" && action !== "save_trendyol_credentials" && action !== "sync_trendyol_orders" && action !== "sync_trendyol_products") {
     return json({ error: "Desteklenmeyen işlem." }, 400);
   }
+  if (isScheduledSync && action !== "sync_trendyol_orders") return json({ error: "Zamanlayıcı yalnızca sipariş aktarabilir." }, 403);
   if (!body.store_id || !/^[0-9a-f-]{36}$/i.test(body.store_id)) {
     return json({ error: "Geçerli mağaza kimliği gerekli." }, 400);
   }
 
   const storeUrl = new URL(url + "/rest/v1/stores");
   storeUrl.searchParams.set("id", "eq." + body.store_id);
-  storeUrl.searchParams.set("select", "id,marketplace,organization_id");
+  storeUrl.searchParams.set("select", "id,marketplace,organization_id,connection_status");
   storeUrl.searchParams.set("limit", "1");
   const storeResponse = await fetch(storeUrl, { headers: { ...authHeaders, Accept: "application/json" } });
   if (!storeResponse.ok) return json({ error: "Mağaza erişimi doğrulanamadı." }, 403);
   const stores = await storeResponse.json();
   if (!Array.isArray(stores) || stores.length !== 1 || stores[0].marketplace !== "Trendyol") {
     return json({ error: "Trendyol mağazası bulunamadı veya erişim izniniz yok." }, 403);
+  }
+  if (isScheduledSync && stores[0].connection_status !== "connected") {
+    return json({ ok: true, skipped: true, reason: "Mağaza bağlantısı etkin değil." });
   }
   const store = stores[0];
 
@@ -226,7 +250,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: error instanceof Error ? error.message : "Geçersiz tarih aralığı." }, 400);
   }
   const days = Math.round((Date.parse(syncRange.to) - Date.parse(syncRange.from)) / 86_400_000) + 1;
-  const secretResponse = await fetch(url + "/rest/v1/rpc/get_marketplace_secret_for_user", {
+  const secretRpc = isScheduledSync ? "get_marketplace_secret_for_cron" : "get_marketplace_secret_for_user";
+  const secretResponse = await fetch(url + "/rest/v1/rpc/" + secretRpc, {
     method: "POST",
     headers: { ...authHeaders, "Content-Type": "application/json" },
     body: JSON.stringify({ p_store_id: body.store_id }),
