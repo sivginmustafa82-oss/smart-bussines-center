@@ -159,7 +159,7 @@ function StoreSummary() {
                 </span>
               </div>
               <div className={`mt-4 text-xl font-bold tracking-tight tabular-nums ${card.amountTone}`}>
-                <Money value={-card.amount} sign="minus" />
+                <Money value={card.amount} sign={card.title === "Brüt satış" ? undefined : "minus"} />
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{card.detail}</p>
             </article>
