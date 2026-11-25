@@ -16,7 +16,7 @@ import { PageHeader, Panel, Money } from "@/components/app/ui-bits";
 import { calculateSalesSummary } from "@/lib/domain/sales-summary";
 import { formatNumber } from "@/lib/format";
 import { supabase } from "@/integrations/supabase/client";
-import { syncWorkspaceWithCloud } from "@/lib/data/cloud-sync";
+import { cloudStoreIdForLocalId, syncWorkspaceWithCloud } from "@/lib/data/cloud-sync";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_panel/magaza-ozeti")({
@@ -61,7 +61,7 @@ function StoreSummary() {
         const { data, error } = await supabase.functions.invoke("smart-business-api", {
           body: {
             action: "sync_trendyol_orders",
-            store_id: store.id,
+            store_id: cloudStoreIdForLocalId(store.id),
             start_date: filters.from,
             end_date: filters.to,
           },
