@@ -37,8 +37,15 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
-  console.error(error);
+  console.error("[AppErrorBoundary]", error);
   const router = useRouter();
+  // Show the actual client-side exception instead of hiding it behind a generic
+  // message. Keep this to name/message only (never stack traces or browser storage).
+  const diagnostic = error instanceof Error
+    ? [error.name, error.message].filter(Boolean).join(": ")
+    : typeof error === "string"
+      ? error
+      : "Uygulama beklenmeyen bir hata nesnesi döndürdü.";
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
@@ -52,6 +59,11 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           Bir sorun oluştu. Sayfayı yenilemeyi deneyin ya da ana sayfaya dönün.
         </p>
+        <div className="mt-4 rounded-md border bg-muted/40 p-3 text-left">
+          <p className="text-xs font-semibold text-foreground">Teknik hata ayrıntısı</p>
+          <p className="mt-1 break-words font-mono text-xs text-muted-foreground">{diagnostic}</p>
+          <p className="mt-2 text-xs text-muted-foreground">Bu metni destek ekibine iletebilirsiniz. Güvenlik için oturum bilgileri ve hata yığını gösterilmez.</p>
+        </div>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
