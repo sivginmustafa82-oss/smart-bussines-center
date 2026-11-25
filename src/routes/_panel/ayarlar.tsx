@@ -65,7 +65,6 @@ function Settings() {
   const [isRestoring, setIsRestoring] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<CloudImportResult | null>(null);
-  const [syncResult, setSyncResult] = useState<CloudSyncResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [showAccountDetails, setShowAccountDetails] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -187,7 +186,6 @@ function Settings() {
     setImportError(null);
     try {
       const result = await syncWorkspaceWithCloud();
-      setSyncResult(result);
       setImportResult({ ...result, importedAt: result.syncedAt });
       toast.success("Bulut ve bu cihaz başarıyla eşitlendi");
     } catch (error) {
@@ -603,17 +601,6 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
               </div>
             </div>
           </div>
-          {syncResult && (
-            <p className="md:col-span-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success" role="status">
-              {syncResult.start_date && syncResult.end_date && (
-                <>Aralık: {syncResult.query_start ?? syncResult.start_date} – {syncResult.query_end ?? syncResult.end_date}. </>
-              )}
-              {syncResult.packages_received} paket incelendi; {syncResult.lines_imported} sipariş satırı aktarıldı.
-              {" "}Satış: {syncResult.sale_lines}, iptal: {syncResult.cancellation_lines}, onaylı iade: {syncResult.return_lines} kalem ({(syncResult.return_gross_amount ?? 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL).
-              {" "}İadeye bağlı eşleşen indirim: {(syncResult.return_discount_matched ?? 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL; eşleşmeyen iade kalemi: {syncResult.return_discount_unmatched_lines ?? 0}.
-              {" "}Ürün eşleşmesi: {syncResult.matched_products}; eşleşmeyen: {syncResult.unmatched_products}.
-            </p>
-          )}
         </form>
       )}
     </Panel>
