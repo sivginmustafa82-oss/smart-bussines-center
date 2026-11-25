@@ -17,6 +17,8 @@ import { calculateSalesSummary } from "@/lib/domain/sales-summary";
 import { formatNumber } from "@/lib/format";
 import { supabase } from "@/integrations/supabase/client";
 import { cloudStoreIdForLocalId, syncWorkspaceWithCloud } from "@/lib/data/cloud-sync";
+import { readDB, readSession } from "@/lib/data/local-db";
+import { scoped } from "@/lib/data/repo";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_panel/magaza-ozeti")({
@@ -44,17 +46,27 @@ function StoreSummary() {
       toast.error("Önce başlangıç ve bitiş tarihini seçin.");
       return;
     }
-    const targetStores = (filters.storeId === "all"
-      ? ws.stores
-      : ws.stores.filter((store) => store.id === filters.storeId))
-      .filter((store) => store.marketplace === "trendyol" && store.connectionStatus === "connected");
-    if (!targetStores.length) {
-      toast.error("Seçili mağazada bağlı bir Trendyol hesabı bulunamadı.");
-      return;
-    }
-
     setSyncingPeriod(true);
     try {
+      // The connection status is server-controlled. Refresh it from Supabase before
+      // filtering stores; a stale browser cache must not hide an existing connection.
+      const localSession = readSession();
+      if (!localSession?.tenantId) throw new Error("Çalışma alanı oturumu bulunamadı. Yeniden giriş yapın.");
+      await syncWorkspaceWithCloud();
+      const refreshedStores = scoped(readDB(), localSession.tenantId).stores;
+      const targetStores = (filters.storeId === "all"
+        ? refreshedStores
+        : refreshedStores.filter((store) => store.id === filters.storeId))
+        .filter((store) => store.marketplace === "trendyol" && store.connectionStatus === "connected");
+      if (!targetStores.length) {
+        const visible = refreshedStores
+          .filter((store) => store.marketplace === "trendyol")
+          .map((store) => store.name + " (" + store.connectionStatus + ")");
+        throw new Error(visible.length
+          ? "Trendyol mağazası buluttan yenilendi ancak bağlantı durumu bağlı değil: " + visible.join(", ")
+          : "Bu çalışma alanında Trendyol mağazası bulunamadı. Ayarlar > Trendyol bağlantısını kontrol edin.");
+      }
+
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData.session) throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
       for (const store of targetStores) {
