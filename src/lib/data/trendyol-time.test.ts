@@ -9,7 +9,7 @@ import {
   isDateOnlyInIstanbulRange,
   isTimestampInIstanbulRange,
   parseTimestampMs,
-} from "../../supabase/functions/smart-business-api/trendyol-time";
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 describe("Europe/Istanbul report date boundaries", () => {
   it("uses Turkey midnight as the inclusive start and next midnight as exclusive end", () => {
