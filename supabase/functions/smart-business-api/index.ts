@@ -83,7 +83,7 @@ function friendlyTrendyolError(status: number): string {
   return "Trendyol isteği başarısız oldu (HTTP " + status + ").";
 }
 
-/** Trendyol epoch-ms timestamp → report calendar day, applying the +3-hour rule exactly once. */
+/** Trendyol epoch-ms timestamp → actual seller calendar day in Europe/Istanbul. */
 function localDate(timestamp: number): string {
   return trendyolReportDateFromEpoch(timestamp);
 }
@@ -681,8 +681,8 @@ Deno.serve(async (req: Request) => {
     days,
     start_date: syncRange.from,
     end_date: syncRange.to,
-    query_start: new Date(queryWindows[0]?.startDate ?? endDate).toISOString() + " (Trendyol +3 rule)",
-    query_end: new Date(endDate).toISOString() + " (Trendyol +3 rule)",
+    query_start: new Date(queryWindows[0]?.startDate ?? endDate).toISOString() + " (Europe/Istanbul)",
+    query_end: new Date(endDate).toISOString() + " (Europe/Istanbul)",
     packages_received: packages.length,
     total_packages: totalElements,
     lines_imported: records.length,
