@@ -55,6 +55,33 @@ export async function syncStoresAutomatically(): Promise<void> {
   }
 
   const localStores = scoped(readDB(), tenantId).stores;
+  // Recover an absent ID map only when marketplace + normalized store name identify
+  // exactly one local row. Never guess when duplicate store names exist.
+  const mappedLocalIds = new Set(
+    Object.keys(idMap).filter((key) => key.startsWith("store:")).map((key) => key.slice("store:".length)),
+  );
+  const { data: mappingRows, error: mappingError } = await supabase
+    .from("stores")
+    .select("id, marketplace, name")
+    .eq("organization_id", organizationId);
+  if (mappingError) throw new Error("Buluttaki mağaza kimlikleri okunamadı: " + mappingError.message);
+  for (const row of (mappingRows ?? []) as Row[]) {
+    const alreadyMapped = Object.entries(idMap).some(([key, value]) =>
+      key.startsWith("store:") && value === row.id
+    );
+    if (alreadyMapped) continue;
+    const candidates = localStores.filter((local) =>
+      !mappedLocalIds.has(local.id) &&
+      local.marketplace === marketplaceFromCloud(row.marketplace) &&
+      local.name.trim().toLocaleLowerCase("tr-TR") === String(row.name ?? "").trim().toLocaleLowerCase("tr-TR")
+    );
+    if (candidates.length === 1) {
+      idMap["store:" + candidates[0].id] = row.id;
+      mappedLocalIds.add(candidates[0].id);
+    }
+  }
+  window.localStorage.setItem(mapKey, JSON.stringify(idMap));
+
   const pending = getPendingStoreEdits(tenantId);
   const upload = localStores.filter((store) => Boolean(pending[store.id]));
   const uploaded: Record<string, string> = {};
