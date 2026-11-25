@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react";
 import { CalendarRange, Store as StoreIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -75,6 +75,8 @@ export function useFilters() {
 
 export function FilterBar({ stores }: { stores: Store[] }) {
   const { storeId, setStoreId, preset, setPreset, custom, setCustom } = useFilters();
+  const [draftCustom, setDraftCustom] = useState(custom);
+  useEffect(() => setDraftCustom(custom), [custom]);
   const validStore = storeId === "all" || stores.some((s) => s.id === storeId) ? storeId : "all";
   return (
     <div className="mb-6 flex flex-col gap-3 rounded-xl border bg-paper p-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -115,17 +117,25 @@ export function FilterBar({ stores }: { stores: Store[] }) {
             type="date"
             aria-label="Başlangıç tarihi"
             className="bg-card"
-            value={custom.from}
-            onChange={(e) => setCustom({ ...custom, from: e.target.value })}
+            value={draftCustom.from}
+            onChange={(e) => setDraftCustom({ ...draftCustom, from: e.target.value })}
           />
           <span className="text-muted-foreground">–</span>
           <Input
             type="date"
             aria-label="Bitiş tarihi"
             className="bg-card"
-            value={custom.to}
-            onChange={(e) => setCustom({ ...custom, to: e.target.value })}
+            value={draftCustom.to}
+            onChange={(e) => setDraftCustom({ ...draftCustom, to: e.target.value })}
           />
+          <button
+            type="button"
+            onClick={() => setCustom(draftCustom)}
+            disabled={!draftCustom.from || !draftCustom.to || draftCustom.from > draftCustom.to}
+            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Uygula
+          </button>
         </div>
       )}
     </div>
