@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Info } from "lucide-react";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +30,8 @@ export const Route = createFileRoute("/_panel")({
 });
 
 function PanelLayout() {
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+
   useEffect(() => {
     let stopped = false;
     let stopProductSync = () => {};
@@ -55,6 +57,7 @@ function PanelLayout() {
       stopProductSync = startAutomaticProductSync();
       stopStoreSync = startAutomaticStoreSync();
       stopRecordSync = startAutomaticRecordSync();
+      setWorkspaceReady(true);
     }
 
     void initializeCloudData();
@@ -65,6 +68,18 @@ function PanelLayout() {
       stopRecordSync();
     };
   }, []);
+
+  if (!workspaceReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="text-center">
+          <div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm font-medium">Çalışma alanınız ve mağazalarınız yükleniyor…</p>
+          <p className="mt-1 text-xs text-muted-foreground">Bulut kayıtları tamamlanınca panel açılacak.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
