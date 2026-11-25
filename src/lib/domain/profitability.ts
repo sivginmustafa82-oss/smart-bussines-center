@@ -1,4 +1,5 @@
 import type { Expense, ExpenseCategory, OrderRecord, Product } from "./types";
+import { hasMatchingSaleLine } from "./record-matching";
 
 export interface Filters {
   storeId: string | "all";
@@ -90,12 +91,12 @@ export function calculateProfit(
     cancelledUnits: 0,
   };
   const sources = { manual: 0, imported: 0 };
-  const periodSaleOrders = new Set(records.filter((r) => r.type === "sale").map((r) => r.orderNumber));
+  const saleRecords = records.filter((r) => r.type === "sale");
 
   for (const r of records) {
     // A return belongs to the original sale period, not the later approval date.
     // Ignore claims whose original sale is not present in the selected period.
-    if (r.type === "return" && !periodSaleOrders.has(r.orderNumber)) continue;
+    if (r.type === "return" && !hasMatchingSaleLine(r, saleRecords)) continue;
     sources[r.source] += 1;
     const unitCost = r.productId ? (productMap.get(r.productId)?.unitCost ?? null) : null;
     const lineCost = unitCost == null ? 0 : unitCost * r.quantity;
