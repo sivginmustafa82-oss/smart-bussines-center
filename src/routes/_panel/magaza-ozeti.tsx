@@ -71,7 +71,7 @@ function StoreSummary() {
         if (!data?.ok) throw new Error(data?.error || store.name + " siparişleri aktarılamadı.");
       }
       await syncWorkspaceWithCloud();
-      toast.success("Seçili dönem Trendyol +3 saat kuralıyla yeniden aktarıldı.");
+      toast.success("Seçili dönem Europe/Istanbul saat dilimiyle yeniden aktarıldı.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Tarih aralığı yeniden aktarılamadı.");
     } finally {
@@ -145,8 +145,8 @@ function StoreSummary() {
       <div className="mb-4 flex items-start gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
         <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
         <p>
-          Trendyol tarih aralığı zorunlu +3 saat kuralıyla hesaplanır. Sipariş ve onaylı iade zaman damgaları
-          aynı kuralla normalize edilir; başlangıç ve bitiş günleri dahildir. Bu düzeltme yalnızca bir kez uygulanır.
+          Tarih aralıkları Europe/Istanbul (Türkiye saati, UTC+3) esas alınarak hesaplanır. UTC zaman damgaları
+          Türkiye takvim gününe dönüştürülür; başlangıç ve bitiş günleri tam gün olarak dahildir.
         </p>
       </div>
       <div className="mb-4 flex justify-end">
