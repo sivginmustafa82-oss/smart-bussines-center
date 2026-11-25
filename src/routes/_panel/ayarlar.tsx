@@ -67,6 +67,12 @@ function Settings() {
   const [importResult, setImportResult] = useState<CloudImportResult | null>(null);
   const [syncResult, setSyncResult] = useState<CloudSyncResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [showAccountDetails, setShowAccountDetails] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const localCounts = {
     stores: ws.stores.length,
@@ -117,6 +123,44 @@ function Settings() {
     if (ws.user) renameUser(ws.user.id, parsed.data.name);
     renameTenant(ws.tenantId, parsed.data.companyName);
     toast.success("Bu tarayıcıdaki profil bilgileri güncellendi");
+  }
+
+  async function changeAccountPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordError(null);
+    if (!ws.user?.email) {
+      setPasswordError("Oturum e-posta adresi bulunamadı. Yeniden giriş yapın.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("Yeni şifre en az 8 karakter olmalıdır.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Yeni şifre ve tekrarı aynı değil.");
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      // Re-authenticate before changing the credential.
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: ws.user.email,
+        password: currentPassword,
+      });
+      if (signInError) throw new Error("Mevcut şifre doğrulanamadı. Şifrenizi kontrol edin.");
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Hesap şifreniz başarıyla güncellendi.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Şifre güncellenemedi.";
+      setPasswordError(message);
+      toast.error("Şifre güncellenemedi");
+    } finally {
+      setIsChangingPassword(false);
+    }
   }
 
   async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
@@ -185,6 +229,44 @@ function Settings() {
               Bu ekrandaki ad ve çalışma alanı adı şimdilik bu tarayıcının profil önbelleğini günceller.
             </p>
           </form>
+        </Panel>
+
+        <Panel title="Hesap ve şifre güvenliği" description="Giriş bilgilerinizi görüntüleyin ve hesabınızın şifresini güvenli şekilde değiştirin.">
+          <div className="space-y-4">
+            <div>
+              <Button type="button" variant="outline" onClick={() => setShowAccountDetails((value) => !value)}>
+                {showAccountDetails ? "Hesap bilgilerini gizle" : "Mevcut kullanıcı bilgilerini göster"}
+              </Button>
+              {showAccountDetails && (
+                <div className="mt-3 rounded-lg border bg-muted/40 p-3 text-sm">
+                  <p><span className="text-muted-foreground">Kullanıcı adı:</span> {ws.user?.name || "Tanımlanmamış"}</p>
+                  <p className="mt-1"><span className="text-muted-foreground">Giriş e-postası:</span> {ws.user?.email || "Bulunamadı"}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Mevcut şifre güvenlik nedeniyle görüntülenemez. Yalnızca yeni şifre belirleyebilirsiniz.</p>
+                </div>
+              )}
+            </div>
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold">Şifreyi güncelle</h3>
+              <form onSubmit={(event) => void changeAccountPassword(event)} className="mt-3 grid gap-3 md:max-w-xl" noValidate>
+                <Field label="Mevcut şifre" htmlFor="account-current-password">
+                  <Input id="account-current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
+                </Field>
+                <Field label="Yeni şifre" htmlFor="account-new-password" hint="En az 8 karakter kullanın.">
+                  <Input id="account-new-password" type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} />
+                </Field>
+                <Field label="Yeni şifre (tekrar)" htmlFor="account-confirm-password">
+                  <Input id="account-confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} />
+                </Field>
+                <div>
+                  <Button type="submit" disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}>
+                    {isChangingPassword ? <Loader2 className="animate-spin" /> : <KeyRound />}
+                    {isChangingPassword ? "Şifre güncelleniyor…" : "Şifreyi güncelle"}
+                  </Button>
+                </div>
+                {passwordError && <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">{passwordError}</p>}
+              </form>
+            </div>
+          </div>
         </Panel>
 
         <Panel title="Altyapı durumu" description="Bağlantı ve hazır olan bileşenlerin mevcut durumu.">
