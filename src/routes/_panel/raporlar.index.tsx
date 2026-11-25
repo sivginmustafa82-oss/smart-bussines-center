@@ -7,7 +7,7 @@ import { FilterBar } from "@/components/app/filters";
 import { STATEMENT_LINES } from "@/components/app/statement";
 import { useFilteredProfit } from "@/components/app/useProfit";
 import { EmptyState, Money, PageHeader, Panel } from "@/components/app/ui-bits";
-import { activePeriods, calculateProfit, periodRange, inRange } from "@/lib/domain/profitability";
+import { activePeriods, calculateProfit, periodRange, isOrderInRange, inRange } from "@/lib/domain/profitability";
 import { formatPercent, formatPeriod } from "@/lib/format";
 
 export const Route = createFileRoute("/_panel/raporlar/")({
@@ -31,8 +31,10 @@ function Reports() {
     () =>
       activePeriods(records, expenses).map((period) => {
         const range = periodRange(period);
+        // Order records must be bucketed by their real Istanbul order timestamp,
+        // not by the date-only DB field which may still contain a UTC calendar day.
         const b = calculateProfit(
-          records.filter((r) => inRange(r.date, range)),
+          records.filter((r) => isOrderInRange(r, range)),
           expenses.filter((e) => inRange(e.date, range)),
           ws.products,
         );

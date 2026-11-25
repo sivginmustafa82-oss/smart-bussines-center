@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { CalendarRange, Store as StoreIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { todayISO } from "@/lib/format";
+import { istanbulDateFromEpoch } from "../../../supabase/functions/smart-business-api/trendyol-time";
 import type { Filters } from "@/lib/domain/profitability";
 import type { Store } from "@/lib/domain/types";
 
@@ -17,8 +17,16 @@ export const PRESET_LABELS: Record<Preset, string> = {
   custom: "Özel aralık",
 };
 
-export function presetRange(p: Preset, custom: { from: string; to: string }): { from: string | null; to: string | null } {
-  const today = todayISO();
+/**
+ * Resolve preset ranges from a single instant using the Europe/Istanbul calendar.
+ * nowMs is injectable so month/year boundary behavior can be tested deterministically.
+ */
+export function presetRange(
+  p: Preset,
+  custom: { from: string; to: string },
+  nowMs = Date.now(),
+): { from: string | null; to: string | null } {
+  const today = istanbulDateFromEpoch(nowMs);
   const [year, month, day] = today.split("-").map(Number);
   const now = new Date(Date.UTC(year, month - 1, day));
   const asISO = (d: Date) => d.toISOString().slice(0, 10);

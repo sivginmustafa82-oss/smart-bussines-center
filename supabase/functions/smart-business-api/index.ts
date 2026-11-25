@@ -458,6 +458,7 @@ Deno.serve(async (req: Request) => {
   const recordsById = new Map<string, JsonObj>();
   let matchedProducts = 0;
   let unmatchedProducts = 0;
+  let packagesWithoutOrderDate = 0;
   let saleLines = 0;
   let cancellationLines = 0;
   let returnLines = 0;
@@ -467,9 +468,19 @@ Deno.serve(async (req: Request) => {
     if (state === "unpacked" || state === "awaiting") continue;
     const lines = Array.isArray(pkg?.lines) ? (pkg.lines as JsonObj[]) : [];
     const realOrderEpoch = parseTimestampMs(pkg?.orderDate) ?? parseTimestampMs(pkg?.createdDate);
-    const effectiveOrderEpoch = realOrderEpoch ?? parseTimestampMs(pkg?.lastModifiedDate) ?? Date.now();
+    const packageUpdateEpoch = parseTimestampMs(pkg?.lastModifiedDate);
+    const effectiveOrderEpoch = realOrderEpoch ?? packageUpdateEpoch;
+    // record_date is required by the historical ledger. If Trendyol omits both orderDate
+    // and createdDate, use the package update day only as a clearly-labelled fallback;
+    // never invent a timestamp or silently substitute the current server time.
+    if (effectiveOrderEpoch == null) {
+      packagesWithoutOrderDate += 1;
+      continue;
+    }
     const orderRecordDate = localDate(effectiveOrderEpoch);
-    const orderTimestampNote = realOrderEpoch ? "Sipariş:" + istanbulIsoFromEpoch(realOrderEpoch) : "";
+    const orderTimestampNote = realOrderEpoch
+      ? "Sipariş:" + istanbulIsoFromEpoch(realOrderEpoch)
+      : "Sipariş zamanı API yanıtında yok; paket son güncelleme günü kullanıldı";
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
       const quantity = Math.max(1, Math.floor(Number(line?.quantity) || 1));
@@ -727,6 +738,7 @@ Deno.serve(async (req: Request) => {
     claims_received: claimsReceived,
     matched_products: matchedProducts,
     unmatched_products: unmatchedProducts,
-    message: "Trendyol siparişleri buluta aktarıldı. Var olan manuel kayıtlar ve finans hareketleri korunmuştur.",
+    packages_without_order_date: packagesWithoutOrderDate,
+    message: "Trendyol siparişleri buluta aktarıldı. Sipariş zamanları saklandı; API'de tarih bulunmayan paketler ayrıca raporlandı. Var olan manuel kayıtlar ve finans hareketleri korunmuştur.",
   });
 });
