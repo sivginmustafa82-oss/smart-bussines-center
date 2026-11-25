@@ -1050,6 +1050,13 @@ export type Database = {
     }
     Functions: {
       delete_store: { Args: { p_store_id: string }; Returns: undefined }
+      get_marketplace_secret_for_cron: {
+        Args: { p_store_id: string }
+        Returns: {
+          credential_ciphertext: string
+          encryption_key_version: number
+        }[]
+      }
       get_marketplace_secret_for_user: {
         Args: { p_store_id: string }
         Returns: {
@@ -1062,6 +1069,10 @@ export type Database = {
         Returns: boolean
       }
       import_trendyol_order_records: {
+        Args: { p_records: Json; p_store_id: string }
+        Returns: Json
+      }
+      import_trendyol_order_records_for_cron: {
         Args: { p_records: Json; p_store_id: string }
         Returns: Json
       }
@@ -1096,6 +1107,10 @@ export type Database = {
           p_store_id: string
         }
         Returns: undefined
+      }
+      validate_order_sync_cron_secret: {
+        Args: { p_secret: string }
+        Returns: boolean
       }
     }
     Enums: {
