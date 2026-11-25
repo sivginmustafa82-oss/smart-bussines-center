@@ -1,4 +1,4 @@
-import { istanbulDateFromEpoch, istanbulDateTimeFromEpoch, resolveSyncRange, trendyolQueryWindows } from "./trendyol-time.ts";
+import { trendyolReportDateFromEpoch, istanbulDateTimeFromEpoch, resolveSyncRange, trendyolQueryWindows } from "./trendyol-time.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,9 +83,9 @@ function friendlyTrendyolError(status: number): string {
   return "Trendyol isteği başarısız oldu (HTTP " + status + ").";
 }
 
-/** Trendyol epoch-ms timestamp → Istanbul calendar day (same result as the original converter). */
+/** Trendyol epoch-ms timestamp → report calendar day, applying the +3-hour rule exactly once. */
 function localDate(timestamp: number): string {
-  return istanbulDateFromEpoch(timestamp);
+  return trendyolReportDateFromEpoch(timestamp);
 }
 
 async function stableUuid(value: string): Promise<string> {
@@ -681,8 +681,8 @@ Deno.serve(async (req: Request) => {
     days,
     start_date: syncRange.from,
     end_date: syncRange.to,
-    query_start: istanbulDateTimeFromEpoch(queryWindows[0]?.startDate ?? endDate) + " (Europe/Istanbul)",
-    query_end: istanbulDateTimeFromEpoch(endDate) + " (Europe/Istanbul)",
+    query_start: new Date(queryWindows[0]?.startDate ?? endDate).toISOString() + " (Trendyol +3 rule)",
+    query_end: new Date(endDate).toISOString() + " (Trendyol +3 rule)",
     packages_received: packages.length,
     total_packages: totalElements,
     lines_imported: records.length,
