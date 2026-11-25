@@ -102,7 +102,7 @@ function AuthPage() {
         return;
       }
       toast.success("Hesabınız güvenli şekilde oluşturuldu");
-      navigate({ to: "/genel-bakis", replace: true });
+      navigate({ to: "/magaza-ozeti", replace: true });
     } catch (err) {
       setErrors({ _form: (err as Error).message });
     } finally {
