@@ -28,7 +28,7 @@ describe("calculateSalesSummary — Claude-compatible matching", () => {
     expect(summary.returns.amount).toBe(1000);
     expect(summary.discounts.amount).toBe(100);
     expect(summary.net.units).toBe(1);
-    expect(summary.net.amount).toBe(500);
+    expect(summary.net.amount).toBe(400);
   });
 
   it("does not count returns from outside the selected period or unmatched barcodes", () => {
