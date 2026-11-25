@@ -124,7 +124,8 @@ export function daysBetween(from: string, to: string): number {
 
 /** Today's calendar day in Istanbul. */
 export function istanbulToday(nowMs: number = Date.now()): string {
-  return istanbulDateFromEpoch(nowMs);
+  const p = istanbulParts(nowMs);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 
 export interface TrendyolQueryWindow {
