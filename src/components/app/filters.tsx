@@ -84,7 +84,14 @@ export function FilterBar({ stores }: { stores: Store[] }) {
   function applyCustomRange() {
     const from = fromRef.current?.value ?? "";
     const to = toRef.current?.value ?? "";
-    if (!from || !to || from > to) return;
+    if (!from) {
+      fromRef.current?.focus();
+      return;
+    }
+    if (!to || from > to) {
+      toRef.current?.focus();
+      return;
+    }
     setCustom({ from, to });
   }
 
@@ -141,7 +148,6 @@ export function FilterBar({ stores }: { stores: Store[] }) {
           <button
             type="button"
             onClick={applyCustomRange}
-            disabled={!fromRef.current?.value || !toRef.current?.value || fromRef.current.value > toRef.current.value}
             className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Uygula
