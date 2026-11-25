@@ -2,8 +2,14 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Expense, OrderRecord, ReconciliationEntry } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
 import { clearPendingRecordEdits, getPendingRecordEdits, persistCloudIdMap, scoped } from "./repo";
+import {
+  extractTrendyolTimestampsFromNote,
+  parseTimestampMs,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
+const str = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
+const nullableNum = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value));
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -53,26 +59,32 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
   const products = new Map(snapshot.products.map((product) => [product.id, map["product:" + product.id] || product.id]));
   const uploaded: Record<string, string> = {};
 
-  const orderRows = snapshot.orders.filter((row) => row.source === "manual" && pending["order:" + row.id]).map((row: OrderRecord) => ({
-    id: cloudIdFor("order", row.id, map),
-    organization_id: organizationId,
-    store_id: stores.get(row.storeId),
-    record_type: row.type,
-    order_number: row.orderNumber,
-    record_date: row.date,
-    product_id: row.productId ? products.get(row.productId) ?? null : null,
-    quantity: row.quantity,
-    gross_amount: row.grossAmount,
-    discount_amount: row.discountAmount,
-    coupon_amount: row.couponAmount,
-    commission_amount: row.commissionAmount,
-    shipping_amount: row.shippingAmount,
-    withholding_amount: row.withholdingAmount,
-    note: row.note,
-    data_source: "manual",
-    verified: row.verified,
-    created_at: row.createdAt,
-  }));
+  const orderRows = snapshot.orders
+    .filter((row) => row.source === "manual" && pending["order:" + row.id])
+    .map((row: OrderRecord) => {
+      const storeId = stores.get(row.storeId);
+      if (!storeId) throw new Error("Siparişin mağaza bulut eşlemesi bulunamadı.");
+      return {
+        id: cloudIdFor("order", row.id, map),
+        organization_id: organizationId,
+        store_id: storeId,
+        record_type: row.type,
+        order_number: row.orderNumber,
+        record_date: row.date,
+        product_id: row.productId ? (products.get(row.productId) ?? null) : null,
+        quantity: row.quantity,
+        gross_amount: row.grossAmount,
+        discount_amount: row.discountAmount,
+        coupon_amount: row.couponAmount,
+        commission_amount: row.commissionAmount,
+        shipping_amount: row.shippingAmount,
+        withholding_amount: row.withholdingAmount,
+        note: row.note,
+        data_source: "manual",
+        verified: row.verified,
+        created_at: row.createdAt,
+      };
+    });
   const expenseRows = snapshot.expenses.filter((row) => row.source === "manual" && pending["expense:" + row.id]).map((row: Expense) => ({
     id: cloudIdFor("expense", row.id, map),
     organization_id: organizationId,
@@ -85,30 +97,29 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
     data_source: "manual",
     created_at: row.createdAt,
   }));
-  const reconciliationRows = snapshot.reconciliations.filter((row) => row.source === "manual" && pending["reconciliation:" + row.id]).map((row: ReconciliationEntry) => ({
-    id: cloudIdFor("reconciliation", row.id, map),
-    organization_id: organizationId,
-    store_id: stores.get(row.storeId),
-    period: row.period,
-    gross_sales: row.totals.grossSales,
-    cancellations: row.totals.cancellations,
-    returns: row.totals.returns,
-    discounts: row.totals.discounts,
-    commission: row.totals.commission,
-    shipping: row.totals.shipping,
-    withholding: row.totals.withholding,
-    net_payout: row.totals.netPayout,
-    note: row.note,
-    data_source: "manual",
-    created_at: row.createdAt,
-  }));
-
-  for (const row of orderRows) {
-    if (!row.store_id) throw new Error("Siparişin mağaza bulut eşlemesi bulunamadı.");
-  }
-  for (const row of reconciliationRows) {
-    if (!row.store_id) throw new Error("Mutabakatın mağaza bulut eşlemesi bulunamadı.");
-  }
+  const reconciliationRows = snapshot.reconciliations
+    .filter((row) => row.source === "manual" && pending["reconciliation:" + row.id])
+    .map((row: ReconciliationEntry) => {
+      const storeId = stores.get(row.storeId);
+      if (!storeId) throw new Error("Mutabakatın mağaza bulut eşlemesi bulunamadı.");
+      return {
+        id: cloudIdFor("reconciliation", row.id, map),
+        organization_id: organizationId,
+        store_id: storeId,
+        period: row.period,
+        gross_sales: row.totals.grossSales,
+        cancellations: row.totals.cancellations,
+        returns: row.totals.returns,
+        discounts: row.totals.discounts,
+        commission: row.totals.commission,
+        shipping: row.totals.shipping,
+        withholding: row.totals.withholding,
+        net_payout: row.totals.netPayout,
+        note: row.note,
+        data_source: "manual",
+        created_at: row.createdAt,
+      };
+    });
   persistCloudIdMap(tenantId, map);
 
   for (let offset = 0; offset < orderRows.length; offset += 100) {
@@ -127,9 +138,18 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
     if (error) throw new Error("Mutabakat eşitlenemedi: " + error.message);
   }
 
-  for (const row of snapshot.orders) if (pending["order:" + row.id] && row.source === "manual") uploaded["order:" + row.id] = pending["order:" + row.id];
-  for (const row of snapshot.expenses) if (pending["expense:" + row.id] && row.source === "manual") uploaded["expense:" + row.id] = pending["expense:" + row.id];
-  for (const row of snapshot.reconciliations) if (pending["reconciliation:" + row.id] && row.source === "manual") uploaded["reconciliation:" + row.id] = pending["reconciliation:" + row.id];
+  for (const row of snapshot.orders) {
+    const version = pending["order:" + row.id];
+    if (version && row.source === "manual") uploaded["order:" + row.id] = version;
+  }
+  for (const row of snapshot.expenses) {
+    const version = pending["expense:" + row.id];
+    if (version && row.source === "manual") uploaded["expense:" + row.id] = version;
+  }
+  for (const row of snapshot.reconciliations) {
+    const version = pending["reconciliation:" + row.id];
+    if (version && row.source === "manual") uploaded["reconciliation:" + row.id] = version;
+  }
   clearPendingRecordEdits(tenantId, uploaded);
 
   const [remoteOrders, remoteExpenses, remoteReconciliations] = await Promise.all([
@@ -140,46 +160,87 @@ export async function syncBusinessRecordsAutomatically(): Promise<void> {
 
   const current = scoped(readDB(), tenantId);
   const currentPending = getPendingRecordEdits(tenantId);
-  const incomingOrders: OrderRecord[] = remoteOrders.map((row) => ({
-    id: localIdFor("order", row.id, map), tenantId,
-    storeId: localIdFor("store", row.store_id, map),
-    type: row.record_type === "return" || row.record_type === "cancellation" ? row.record_type : "sale",
-    orderNumber: String(row.order_number ?? ""), date: String(row.record_date),
-    productId: row.product_id ? localIdFor("product", row.product_id, map) : null,
-    quantity: Number(row.quantity), grossAmount: Number(row.gross_amount),
-    discountAmount: Number(row.discount_amount), couponAmount: Number(row.coupon_amount),
-    commissionAmount: Number(row.commission_amount), shippingAmount: Number(row.shipping_amount),
-    withholdingAmount: Number(row.withholding_amount), note: String(row.note ?? ""),
-    source: row.data_source === "imported" ? "imported" : "manual",
-    verified: Boolean(row.verified), createdAt: row.created_at,
-  }));
+  const incomingOrders: OrderRecord[] = remoteOrders.map((row) => {
+    const recordType = row["record_type"];
+    const note = str(row["note"]);
+    const noteTs = extractTrendyolTimestampsFromNote(note);
+    const directOrderedMs = parseTimestampMs(row["ordered_at"]);
+    const directApprovedMs = parseTimestampMs(row["approved_at"]);
+    const orderedAt = directOrderedMs != null ? new Date(directOrderedMs).toISOString() : noteTs.orderedAt;
+    const approvedAt = directApprovedMs != null ? new Date(directApprovedMs).toISOString() : noteTs.approvedAt;
+    return {
+      id: localIdFor("order", str(row["id"]), map),
+      tenantId,
+      storeId: localIdFor("store", str(row["store_id"]), map),
+      type: recordType === "return" || recordType === "cancellation" ? recordType : "sale",
+      orderNumber: str(row["order_number"]),
+      date: str(row["record_date"]),
+      ...(orderedAt ? { orderedAt } : {}),
+      ...(approvedAt ? { approvedAt } : {}),
+      productId: row["product_id"] ? localIdFor("product", str(row["product_id"]), map) : null,
+      quantity: Number(row["quantity"]),
+      grossAmount: Number(row["gross_amount"]),
+      discountAmount: Number(row["discount_amount"]),
+      couponAmount: Number(row["coupon_amount"]),
+      commissionAmount: Number(row["commission_amount"]),
+      shippingAmount: Number(row["shipping_amount"]),
+      withholdingAmount: Number(row["withholding_amount"]),
+      note,
+      source: row["data_source"] === "imported" ? "imported" : "manual",
+      verified: Boolean(row["verified"]),
+      createdAt: str(row["created_at"]),
+    };
+  });
   const incomingExpenses: Expense[] = remoteExpenses.map((row) => ({
-    id: localIdFor("expense", row.id, map), tenantId,
-    storeId: row.store_id ? localIdFor("store", row.store_id, map) : null,
-    date: String(row.expense_date), category: row.category,
-    amount: Number(row.amount), description: String(row.description ?? ""),
-    source: row.data_source === "imported" ? "imported" : "manual", createdAt: row.created_at,
+    id: localIdFor("expense", str(row["id"]), map),
+    tenantId,
+    storeId: row["store_id"] ? localIdFor("store", str(row["store_id"]), map) : null,
+    date: str(row["expense_date"]),
+    category: str(row["category"]) as Expense["category"],
+    amount: Number(row["amount"]),
+    description: str(row["description"]),
+    source: row["data_source"] === "imported" ? "imported" : "manual",
+    createdAt: str(row["created_at"]),
   }));
   const incomingReconciliations: ReconciliationEntry[] = remoteReconciliations.map((row) => ({
-    id: localIdFor("reconciliation", row.id, map), tenantId,
-    storeId: localIdFor("store", row.store_id, map), period: String(row.period),
+    id: localIdFor("reconciliation", str(row["id"]), map),
+    tenantId,
+    storeId: localIdFor("store", str(row["store_id"]), map),
+    period: str(row["period"]),
     totals: {
-      grossSales: row.gross_sales === null ? null : Number(row.gross_sales),
-      cancellations: row.cancellations === null ? null : Number(row.cancellations),
-      returns: row.returns === null ? null : Number(row.returns),
-      discounts: row.discounts === null ? null : Number(row.discounts),
-      commission: row.commission === null ? null : Number(row.commission),
-      shipping: row.shipping === null ? null : Number(row.shipping),
-      withholding: row.withholding === null ? null : Number(row.withholding),
-      netPayout: row.net_payout === null ? null : Number(row.net_payout),
+      grossSales: nullableNum(row["gross_sales"]),
+      cancellations: nullableNum(row["cancellations"]),
+      returns: nullableNum(row["returns"]),
+      discounts: nullableNum(row["discounts"]),
+      commission: nullableNum(row["commission"]),
+      shipping: nullableNum(row["shipping"]),
+      withholding: nullableNum(row["withholding"]),
+      netPayout: nullableNum(row["net_payout"]),
     },
-    source: row.data_source === "imported" ? "imported" : "manual",
-    note: String(row.note ?? ""), createdAt: row.created_at, updatedAt: row.updated_at ?? row.created_at,
+    source: row["data_source"] === "imported" ? "imported" : "manual",
+    note: str(row["note"]),
+    createdAt: str(row["created_at"]),
+    updatedAt: str(row["updated_at"] ?? row["created_at"]),
   }));
 
-  for (const row of incomingOrders) if (!map["order:" + row.id]) map["order:" + row.id] = remoteOrders.find((r) => localIdFor("order", r.id, map) === row.id)?.id ?? row.id;
-  for (const row of incomingExpenses) if (!map["expense:" + row.id]) map["expense:" + row.id] = remoteExpenses.find((r) => localIdFor("expense", r.id, map) === row.id)?.id ?? row.id;
-  for (const row of incomingReconciliations) if (!map["reconciliation:" + row.id]) map["reconciliation:" + row.id] = remoteReconciliations.find((r) => localIdFor("reconciliation", r.id, map) === row.id)?.id ?? row.id;
+  for (const row of incomingOrders) {
+    if (!map["order:" + row.id]) {
+      const found = remoteOrders.find((r) => localIdFor("order", str(r["id"]), map) === row.id);
+      map["order:" + row.id] = found ? str(found["id"]) : row.id;
+    }
+  }
+  for (const row of incomingExpenses) {
+    if (!map["expense:" + row.id]) {
+      const found = remoteExpenses.find((r) => localIdFor("expense", str(r["id"]), map) === row.id);
+      map["expense:" + row.id] = found ? str(found["id"]) : row.id;
+    }
+  }
+  for (const row of incomingReconciliations) {
+    if (!map["reconciliation:" + row.id]) {
+      const found = remoteReconciliations.find((r) => localIdFor("reconciliation", str(r["id"]), map) === row.id);
+      map["reconciliation:" + row.id] = found ? str(found["id"]) : row.id;
+    }
+  }
   persistCloudIdMap(tenantId, map);
 
   const merge = <T extends { id: string }>(localRows: T[], remoteRows: T[], kind: string): T[] => {

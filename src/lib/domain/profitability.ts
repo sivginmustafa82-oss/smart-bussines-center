@@ -1,9 +1,17 @@
 import type { Expense, ExpenseCategory, OrderRecord, Product } from "./types";
+import {
+  extractTrendyolTimestampsFromNote,
+  isDateOnlyInIstanbulRange,
+  isTimestampInIstanbulRange,
+  istanbulDateFromEpoch,
+  istanbulMonthRange,
+  parseTimestampMs,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export interface Filters {
   storeId: string | "all";
-  from: string | null; // YYYY-MM-DD inclusive
-  to: string | null; // YYYY-MM-DD inclusive
+  from: string | null; // YYYY-MM-DD inclusive (Europe/Istanbul 00:00:00)
+  to: string | null; // YYYY-MM-DD inclusive (half-open upper bound: next day 00:00:00 Europe/Istanbul)
 }
 
 export interface ProfitBreakdown {
@@ -39,20 +47,70 @@ const OTHER_CATEGORIES: ExpenseCategory[] = ["paketleme", "personel", "yazilim",
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Returns the exact ISO-8601 order timestamp if known from the record (or its Trendyol note).
+ * Never invents a timestamp for date-only/manual records.
+ */
+export function recordOrderedAt(r: Pick<OrderRecord, "orderedAt" | "note">): string | undefined {
+  const direct = parseTimestampMs(r.orderedAt);
+  if (direct != null) return new Date(direct).toISOString();
+  return extractTrendyolTimestampsFromNote(r.note).orderedAt;
+}
+
+/**
+ * Returns the return approval/update ISO-8601 timestamp if known from the record (or its Trendyol note).
+ * Always kept separate from the original order date/time.
+ */
+export function recordApprovedAt(r: Pick<OrderRecord, "approvedAt" | "note">): string | undefined {
+  const direct = parseTimestampMs(r.approvedAt);
+  if (direct != null) return new Date(direct).toISOString();
+  return extractTrendyolTimestampsFromNote(r.note).approvedAt;
+}
+
+/**
+ * Effective reporting calendar day (YYYY-MM-DD in Europe/Istanbul) for a sale, cancellation, or return.
+ * Follows Trendyol store-summary semantics: all three use the original order date/time, never
+ * the return approval timestamp. When a real `orderedAt` timestamp exists, it takes precedence over
+ * a potentially UTC-shifted date string. Date-only records are returned as-is without browser-TZ drift.
+ */
+export function recordIstanbulDate(r: Pick<OrderRecord, "date" | "orderedAt" | "note">): string {
+  const orderedMs = parseTimestampMs(recordOrderedAt(r));
+  if (orderedMs != null) return istanbulDateFromEpoch(orderedMs);
+  return r.date;
+}
+
+/**
+ * Checks whether a YYYY-MM-DD date or real ISO timestamp falls in the half-open Europe/Istanbul
+ * range [from 00:00:00 TR, nextDay(to) 00:00:00 TR).
+ */
 export function inRange(date: string, f: Pick<Filters, "from" | "to">): boolean {
-  if (f.from && date < f.from) return false;
-  if (f.to && date > f.to) return false;
-  return true;
+  const tsMs = parseTimestampMs(date);
+  if (tsMs != null) return isTimestampInIstanbulRange(tsMs, f);
+  return isDateOnlyInIstanbulRange(date, f);
+}
+
+/**
+ * Checks whether an OrderRecord falls inside [from 00:00:00 TR, nextDay(to) 00:00:00 TR).
+ * Uses the exact `orderedAt` UTC epoch when available, and pure calendar-day comparison
+ * (never browser local time) for date-only records.
+ */
+export function isOrderInRange(
+  r: Pick<OrderRecord, "date" | "orderedAt" | "note">,
+  f: Pick<Filters, "from" | "to">,
+): boolean {
+  const orderedMs = parseTimestampMs(recordOrderedAt(r));
+  if (orderedMs != null) return isTimestampInIstanbulRange(orderedMs, f);
+  return isDateOnlyInIstanbulRange(r.date, f);
 }
 
 export function filterRecords(records: OrderRecord[], f: Filters): OrderRecord[] {
-  return records.filter((r) => (f.storeId === "all" || r.storeId === f.storeId) && inRange(r.date, f));
+  return records.filter((r) => (f.storeId === "all" || r.storeId === f.storeId) && isOrderInRange(r, f));
 }
 
 /** Store filter: general expenses (storeId null) only count when looking at all stores. */
 export function filterExpenses(expenses: Expense[], f: Filters): Expense[] {
   return expenses.filter(
-    (e) => (f.storeId === "all" || e.storeId === f.storeId) && inRange(e.date, f),
+    (e) => (f.storeId === "all" || e.storeId === f.storeId) && isDateOnlyInIstanbulRange(e.date, f),
   );
 }
 
@@ -165,16 +223,15 @@ export function calculateProfit(
   };
 }
 
-/** Months (YYYY-MM) that have any record or expense, newest first. */
+/** Months (YYYY-MM in Europe/Istanbul) that have any record or expense, newest first. */
 export function activePeriods(records: OrderRecord[], expenses: Expense[]): string[] {
   const set = new Set<string>();
-  for (const r of records) set.add(r.date.slice(0, 7));
+  for (const r of records) set.add(recordIstanbulDate(r).slice(0, 7));
   for (const e of expenses) set.add(e.date.slice(0, 7));
   return [...set].sort().reverse();
 }
 
 export function periodRange(period: string): { from: string; to: string } {
-  const [y = 1970, m = 1] = period.split("-").map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { from: `${period}-01`, to: `${period}-${String(last).padStart(2, "0")}` };
+  const { from, to } = istanbulMonthRange(period);
+  return { from, to };
 }

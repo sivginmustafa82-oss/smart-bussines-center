@@ -1,3 +1,10 @@
+import {
+  TRENDYOL_TIME_ZONE,
+  istanbulDateFromTimestamp,
+  istanbulToday,
+  parseTimestampMs,
+} from "../../supabase/functions/smart-business-api/trendyol-time";
+
 const tryFormatter = new Intl.NumberFormat("tr-TR", {
   style: "currency",
   currency: "TRY",
@@ -29,14 +36,60 @@ export function formatPercent(value: number | null | undefined): string {
   return percentFormatter.format(value);
 }
 
+/**
+ * Formats either a date-only YYYY-MM-DD string (without browser-timezone drift)
+ * or a full ISO timestamp converted to Europe/Istanbul calendar date.
+ */
 export function formatDate(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const istanbulDate = istanbulDateFromTimestamp(iso) ?? iso.slice(0, 10);
+  const [y, m, d] = istanbulDate.split("-").map(Number);
   if (!y || !m || !d) return iso;
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("tr-TR", {
     day: "2-digit",
     month: "short",
     year: "numeric",
     timeZone: "UTC",
+  });
+}
+
+/**
+ * Formats a real timestamp in Europe/Istanbul (e.g. "01 Eki 2026 02:23").
+ * Returns null when the input is date-only or invalid, so no fake "00:00" is ever shown.
+ */
+export function formatIstanbulDateTime(
+  iso: string | number | null | undefined,
+  includeSeconds = false,
+): string | null {
+  const ms = parseTimestampMs(iso);
+  if (ms == null) return null;
+  return new Date(ms).toLocaleString("tr-TR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(includeSeconds ? { second: "2-digit" } : {}),
+    hourCycle: "h23",
+    timeZone: TRENDYOL_TIME_ZONE,
+  });
+}
+
+/**
+ * Formats only the clock time of a real timestamp in Europe/Istanbul (e.g. "02:23").
+ * Returns null when the input is date-only or invalid.
+ */
+export function formatIstanbulTime(
+  iso: string | number | null | undefined,
+  includeSeconds = false,
+): string | null {
+  const ms = parseTimestampMs(iso);
+  if (ms == null) return null;
+  return new Date(ms).toLocaleTimeString("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(includeSeconds ? { second: "2-digit" } : {}),
+    hourCycle: "h23",
+    timeZone: TRENDYOL_TIME_ZONE,
   });
 }
 
@@ -53,14 +106,7 @@ export function formatPeriod(period: string): string {
 
 export function todayISO(): string {
   // All business-day boundaries follow the store's local timezone, not the device timezone.
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Istanbul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
+  return istanbulToday();
 }
 
 export function currentPeriod(): string {

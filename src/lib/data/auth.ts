@@ -58,9 +58,8 @@ async function getWorkspaceIdentity(authUser: {
   }
 
   const email = authUser.email?.trim().toLowerCase() ?? "";
-  const metadataName = typeof authUser.user_metadata?.full_name === "string"
-    ? authUser.user_metadata.full_name
-    : "";
+  const rawMetaName = authUser.user_metadata?.["full_name"];
+  const metadataName = typeof rawMetaName === "string" ? rawMetaName : "";
   const fullName = profile?.full_name?.trim() || metadataName.trim() || email.split("@")[0] || "Kullanıcı";
 
   return {
@@ -132,7 +131,7 @@ export async function signUp(input: {
     password: input.password,
     options: {
       // Supabase must allow the Vercel preview and production origins in Auth > URL Configuration.
-      emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/giris` : undefined,
+      ...(typeof window !== "undefined" ? { emailRedirectTo: `${window.location.origin}/giris` } : {}),
       data: {
         full_name: input.name.trim(),
         company_name: input.companyName.trim(),

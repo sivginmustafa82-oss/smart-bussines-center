@@ -2,6 +2,10 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Expense, OrderRecord, Product, ReconciliationEntry, Store } from "@/lib/domain/types";
 import { readDB, readSession } from "./local-db";
 import { scoped } from "./repo";
+import {
+  istanbulDateFromTimestamp,
+  istanbulToday,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export interface CloudImportResult {
   importedAt: string;
@@ -133,7 +137,7 @@ export async function importLocalWorkspaceToSupabase(): Promise<CloudImportResul
       variant_id: cloudId(idMap, "variant", product.id),
       unit_cost: product.unitCost!,
       currency: "TRY",
-      effective_from: (product.updatedAt || product.createdAt).slice(0, 10),
+      effective_from: istanbulDateFromTimestamp(product.updatedAt || product.createdAt) ?? istanbulToday(),
       source: "manual",
     }));
 

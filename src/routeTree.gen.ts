@@ -15,6 +15,7 @@ import { Route as GirisRouteImport } from './routes/giris'
 import { Route as PanelAyarlarRouteImport } from './routes/_panel/ayarlar'
 import { Route as PanelGiderlerRouteImport } from './routes/_panel/giderler'
 import { Route as PanelKarlilikRouteImport } from './routes/_panel/karlilik'
+import { Route as PanelMagazaOzetiRouteImport } from './routes/_panel/magaza-ozeti'
 import { Route as PanelSiparislerRouteImport } from './routes/_panel/siparisler'
 import { Route as PanelUrunlerRouteImport } from './routes/_panel/urunler'
 import { Route as PanelMagazalarIndexRouteImport } from './routes/_panel/magazalar.index'
@@ -49,6 +50,11 @@ const PanelGiderlerRoute = PanelGiderlerRouteImport.update({
 const PanelKarlilikRoute = PanelKarlilikRouteImport.update({
   id: '/karlilik',
   path: '/karlilik',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
+const PanelMagazaOzetiRoute = PanelMagazaOzetiRouteImport.update({
+  id: '/magaza-ozeti',
+  path: '/magaza-ozeti',
   getParentRoute: () => PanelRouteRoute,
 } as any)
 const PanelSiparislerRoute = PanelSiparislerRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/ayarlar': typeof PanelAyarlarRoute
   '/giderler': typeof PanelGiderlerRoute
   '/karlilik': typeof PanelKarlilikRoute
+  '/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
@@ -99,9 +106,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/giris': typeof GirisRoute
   '/ayarlar': typeof PanelAyarlarRoute
-  '/genel-bakis': typeof PanelGenelBakisRoute
   '/giderler': typeof PanelGiderlerRoute
   '/karlilik': typeof PanelKarlilikRoute
+  '/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
@@ -117,6 +124,7 @@ export interface FileRoutesById {
   '/_panel/ayarlar': typeof PanelAyarlarRoute
   '/_panel/giderler': typeof PanelGiderlerRoute
   '/_panel/karlilik': typeof PanelKarlilikRoute
+  '/_panel/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/_panel/siparisler': typeof PanelSiparislerRoute
   '/_panel/urunler': typeof PanelUrunlerRoute
   '/_panel/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
@@ -132,6 +140,7 @@ export interface FileRouteTypes {
     | '/ayarlar'
     | '/giderler'
     | '/karlilik'
+    | '/magaza-ozeti'
     | '/siparisler'
     | '/urunler'
     | '/magazalar/$storeId'
@@ -143,9 +152,9 @@ export interface FileRouteTypes {
     | '/'
     | '/giris'
     | '/ayarlar'
-    | '/genel-bakis'
     | '/giderler'
     | '/karlilik'
+    | '/magaza-ozeti'
     | '/siparisler'
     | '/urunler'
     | '/magazalar/$storeId'
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/_panel/ayarlar'
     | '/_panel/giderler'
     | '/_panel/karlilik'
+    | '/_panel/magaza-ozeti'
     | '/_panel/siparisler'
     | '/_panel/urunler'
     | '/_panel/magazalar/$storeId'
@@ -218,6 +228,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PanelKarlilikRouteImport
       parentRoute: typeof PanelRouteRoute
     }
+    '/_panel/magaza-ozeti': {
+      id: '/_panel/magaza-ozeti'
+      path: '/magaza-ozeti'
+      fullPath: '/magaza-ozeti'
+      preLoaderRoute: typeof PanelMagazaOzetiRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
     '/_panel/siparisler': {
       id: '/_panel/siparisler'
       path: '/siparisler'
@@ -267,6 +284,7 @@ interface PanelRouteRouteChildren {
   PanelAyarlarRoute: typeof PanelAyarlarRoute
   PanelGiderlerRoute: typeof PanelGiderlerRoute
   PanelKarlilikRoute: typeof PanelKarlilikRoute
+  PanelMagazaOzetiRoute: typeof PanelMagazaOzetiRoute
   PanelSiparislerRoute: typeof PanelSiparislerRoute
   PanelUrunlerRoute: typeof PanelUrunlerRoute
   PanelMagazalarStoreIdRoute: typeof PanelMagazalarStoreIdRoute
@@ -279,6 +297,7 @@ const PanelRouteRouteChildren: PanelRouteRouteChildren = {
   PanelAyarlarRoute: PanelAyarlarRoute,
   PanelGiderlerRoute: PanelGiderlerRoute,
   PanelKarlilikRoute: PanelKarlilikRoute,
+  PanelMagazaOzetiRoute: PanelMagazaOzetiRoute,
   PanelSiparislerRoute: PanelSiparislerRoute,
   PanelUrunlerRoute: PanelUrunlerRoute,
   PanelMagazalarStoreIdRoute: PanelMagazalarStoreIdRoute,

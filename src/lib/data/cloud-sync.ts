@@ -11,6 +11,10 @@ import type {
 import { readDB, readSession, writeDB } from "./local-db";
 import { clearPendingProductEdits, getPendingProductEdits, scoped } from "./repo";
 import { importLocalWorkspaceToSupabase } from "./cloud-import";
+import {
+  extractTrendyolTimestampsFromNote,
+  parseTimestampMs,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export interface CloudSyncResult {
   syncedAt: string;
@@ -21,7 +25,10 @@ export interface CloudSyncResult {
   reconciliations: number;
 }
 
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
+
+const str = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
+const nullableNum = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value));
 
 function source(value: unknown): DataSource {
   return value === "imported" ? "imported" : "manual";
@@ -117,8 +124,8 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
       readAllRows("reconciliations", orgId),
     ]);
   costsRows.sort((a, b) =>
-    String(b.effective_from ?? "").localeCompare(String(a.effective_from ?? "")) ||
-    String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+    str(b["effective_from"]).localeCompare(str(a["effective_from"])) ||
+    str(b["created_at"]).localeCompare(str(a["created_at"])),
   );
 
   const storeIdMap = new Map<string, string>();
@@ -126,96 +133,128 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   const variantByProduct = new Map<string, Row>();
   const latestCostByVariant = new Map<string, Row>();
 
-  for (const row of storesRows) storeIdMap.set(row.id, localIdFor("store", row.id, idMap));
-  for (const row of productsRows) productIdMap.set(row.id, localIdFor("product", row.id, idMap));
+  for (const row of storesRows) {
+    const id = str(row["id"]);
+    storeIdMap.set(id, localIdFor("store", id, idMap));
+  }
+  for (const row of productsRows) {
+    const id = str(row["id"]);
+    productIdMap.set(id, localIdFor("product", id, idMap));
+  }
   for (const row of variantsRows) {
-    if (!variantByProduct.has(row.product_id)) variantByProduct.set(row.product_id, row);
+    const pid = str(row["product_id"]);
+    if (!variantByProduct.has(pid)) variantByProduct.set(pid, row);
   }
   for (const row of costsRows) {
-    if (!latestCostByVariant.has(row.variant_id)) latestCostByVariant.set(row.variant_id, row);
+    const vid = str(row["variant_id"]);
+    if (!latestCostByVariant.has(vid)) latestCostByVariant.set(vid, row);
   }
 
-  const stores: Store[] = storesRows.map((row) => ({
-    id: storeIdMap.get(row.id)!,
-    tenantId: session.tenantId,
-    name: row.name,
-    marketplace: marketplace(row.marketplace),
-    connectionStatus: row.connection_status === "connected" ? "connected" : "not_connected",
-    createdAt: row.created_at,
-  }));
-
-  const products: Product[] = productsRows.map((row) => {
-    const variant = variantByProduct.get(row.id);
-    const cost = variant ? latestCostByVariant.get(variant.id) : undefined;
+  const stores: Store[] = storesRows.map((row) => {
+    const id = str(row["id"]);
     return {
-      id: productIdMap.get(row.id)!,
+      id: storeIdMap.get(id) ?? id,
       tenantId: session.tenantId,
-      storeId: storeIdMap.get(row.store_id) ?? localIdFor("store", row.store_id, idMap),
-      name: row.title,
-      sku: variant?.sku ?? "",
-      barcode: variant?.barcode ?? "",
-      unitCost: cost ? Number(cost.unit_cost) : null,
-      vatRate: Number(variant?.vat_rate ?? 20),
-      source: source(row.data_source),
-      verified: Boolean(row.verified),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at ?? row.created_at,
+      name: str(row["name"]),
+      marketplace: marketplace(row["marketplace"]),
+      connectionStatus: row["connection_status"] === "connected" ? "connected" : "not_connected",
+      createdAt: str(row["created_at"]),
     };
   });
 
-  const orders: OrderRecord[] = ordersRows.map((row) => ({
-    id: localIdFor("order", row.id, idMap),
-    tenantId: session.tenantId,
-    storeId: storeIdMap.get(row.store_id) ?? localIdFor("store", row.store_id, idMap),
-    type: row.record_type === "return" || row.record_type === "cancellation" ? row.record_type : "sale",
-    orderNumber: row.order_number,
-    date: row.record_date,
-    productId: row.product_id ? productIdMap.get(row.product_id) ?? localIdFor("product", row.product_id, idMap) : null,
-    quantity: Number(row.quantity),
-    grossAmount: Number(row.gross_amount),
-    discountAmount: Number(row.discount_amount),
-    couponAmount: Number(row.coupon_amount),
-    commissionAmount: Number(row.commission_amount),
-    shippingAmount: Number(row.shipping_amount),
-    withholdingAmount: Number(row.withholding_amount),
-    note: row.note ?? "",
-    source: source(row.data_source),
-    verified: Boolean(row.verified),
-    createdAt: row.created_at,
-  }));
+  const products: Product[] = productsRows.map((row) => {
+    const id = str(row["id"]);
+    const storeId = str(row["store_id"]);
+    const variant = variantByProduct.get(id);
+    const cost = variant ? latestCostByVariant.get(str(variant["id"])) : undefined;
+    return {
+      id: productIdMap.get(id) ?? id,
+      tenantId: session.tenantId,
+      storeId: storeIdMap.get(storeId) ?? localIdFor("store", storeId, idMap),
+      name: str(row["title"]),
+      sku: str(variant?.["sku"]),
+      barcode: str(variant?.["barcode"]),
+      unitCost: cost ? Number(cost["unit_cost"]) : null,
+      vatRate: Number(variant?.["vat_rate"] ?? 20),
+      source: source(row["data_source"]),
+      verified: Boolean(row["verified"]),
+      createdAt: str(row["created_at"]),
+      updatedAt: str(row["updated_at"] ?? row["created_at"]),
+    };
+  });
 
-  const expenses: Expense[] = expensesRows.map((row) => ({
-    id: localIdFor("expense", row.id, idMap),
-    tenantId: session.tenantId,
-    storeId: row.store_id ? storeIdMap.get(row.store_id) ?? localIdFor("store", row.store_id, idMap) : null,
-    date: row.expense_date,
-    category: row.category,
-    amount: Number(row.amount),
-    description: row.description ?? "",
-    source: source(row.data_source),
-    createdAt: row.created_at,
-  }));
+  const orders: OrderRecord[] = ordersRows.map((row) => {
+    const storeId = str(row["store_id"]);
+    const productId = row["product_id"] ? str(row["product_id"]) : null;
+    const recordType = row["record_type"];
+    const note = str(row["note"]);
+    const noteTs = extractTrendyolTimestampsFromNote(note);
+    const directOrderedMs = parseTimestampMs(row["ordered_at"]);
+    const directApprovedMs = parseTimestampMs(row["approved_at"]);
+    const orderedAt = directOrderedMs != null ? new Date(directOrderedMs).toISOString() : noteTs.orderedAt;
+    const approvedAt = directApprovedMs != null ? new Date(directApprovedMs).toISOString() : noteTs.approvedAt;
+    return {
+      id: localIdFor("order", str(row["id"]), idMap),
+      tenantId: session.tenantId,
+      storeId: storeIdMap.get(storeId) ?? localIdFor("store", storeId, idMap),
+      type: recordType === "return" || recordType === "cancellation" ? recordType : "sale",
+      orderNumber: str(row["order_number"]),
+      date: str(row["record_date"]),
+      ...(orderedAt ? { orderedAt } : {}),
+      ...(approvedAt ? { approvedAt } : {}),
+      productId: productId ? (productIdMap.get(productId) ?? localIdFor("product", productId, idMap)) : null,
+      quantity: Number(row["quantity"]),
+      grossAmount: Number(row["gross_amount"]),
+      discountAmount: Number(row["discount_amount"]),
+      couponAmount: Number(row["coupon_amount"]),
+      commissionAmount: Number(row["commission_amount"]),
+      shippingAmount: Number(row["shipping_amount"]),
+      withholdingAmount: Number(row["withholding_amount"]),
+      note,
+      source: source(row["data_source"]),
+      verified: Boolean(row["verified"]),
+      createdAt: str(row["created_at"]),
+    };
+  });
 
-  const reconciliations: ReconciliationEntry[] = reconciliationsRows.map((row) => ({
-    id: localIdFor("reconciliation", row.id, idMap),
-    tenantId: session.tenantId,
-    storeId: storeIdMap.get(row.store_id) ?? localIdFor("store", row.store_id, idMap),
-    period: row.period,
-    totals: {
-      grossSales: row.gross_sales === null ? null : Number(row.gross_sales),
-      cancellations: row.cancellations === null ? null : Number(row.cancellations),
-      returns: row.returns === null ? null : Number(row.returns),
-      discounts: row.discounts === null ? null : Number(row.discounts),
-      commission: row.commission === null ? null : Number(row.commission),
-      shipping: row.shipping === null ? null : Number(row.shipping),
-      withholding: row.withholding === null ? null : Number(row.withholding),
-      netPayout: row.net_payout === null ? null : Number(row.net_payout),
-    },
-    source: source(row.data_source),
-    note: row.note ?? "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at ?? row.created_at,
-  }));
+  const expenses: Expense[] = expensesRows.map((row) => {
+    const storeId = row["store_id"] ? str(row["store_id"]) : null;
+    return {
+      id: localIdFor("expense", str(row["id"]), idMap),
+      tenantId: session.tenantId,
+      storeId: storeId ? (storeIdMap.get(storeId) ?? localIdFor("store", storeId, idMap)) : null,
+      date: str(row["expense_date"]),
+      category: str(row["category"]) as Expense["category"],
+      amount: Number(row["amount"]),
+      description: str(row["description"]),
+      source: source(row["data_source"]),
+      createdAt: str(row["created_at"]),
+    };
+  });
+
+  const reconciliations: ReconciliationEntry[] = reconciliationsRows.map((row) => {
+    const storeId = str(row["store_id"]);
+    return {
+      id: localIdFor("reconciliation", str(row["id"]), idMap),
+      tenantId: session.tenantId,
+      storeId: storeIdMap.get(storeId) ?? localIdFor("store", storeId, idMap),
+      period: str(row["period"]),
+      totals: {
+        grossSales: nullableNum(row["gross_sales"]),
+        cancellations: nullableNum(row["cancellations"]),
+        returns: nullableNum(row["returns"]),
+        discounts: nullableNum(row["discounts"]),
+        commission: nullableNum(row["commission"]),
+        shipping: nullableNum(row["shipping"]),
+        withholding: nullableNum(row["withholding"]),
+        netPayout: nullableNum(row["net_payout"]),
+      },
+      source: source(row["data_source"]),
+      note: str(row["note"]),
+      createdAt: str(row["created_at"]),
+      updatedAt: str(row["updated_at"] ?? row["created_at"]),
+    };
+  });
 
   writeDB((db) => ({
     ...db,

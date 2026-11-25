@@ -62,6 +62,23 @@ export function istanbulDateTimeFromEpoch(epochMs: number): string {
   return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}.${pad(p.millisecond, 3)}`;
 }
 
+/** Formats an epoch-ms timestamp as an ISO 8601 string with Istanbul's actual offset (e.g. +03:00). */
+export function istanbulIsoFromEpoch(epochMs: number): string {
+  const p = istanbulParts(epochMs);
+  const offMin = Math.round(offsetAt(epochMs) / 60_000);
+  const sign = offMin >= 0 ? "+" : "-";
+  const absMin = Math.abs(offMin);
+  const offH = pad(Math.floor(absMin / 60));
+  const offM = pad(absMin % 60);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}${sign}${offH}:${offM}`;
+}
+
+/** "HH:mm" or "HH:mm:ss" in Istanbul from an epoch-ms timestamp. */
+export function istanbulTimeFromEpoch(epochMs: number, includeSeconds = false): string {
+  const p = istanbulParts(epochMs);
+  return includeSeconds ? `${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}` : `${pad(p.hour)}:${pad(p.minute)}`;
+}
+
 function parseDate(date: string): { y: number; m: number; d: number } {
   const match = DATE_RE.exec(date);
   if (!match) throw new Error("Tarih YYYY-AA-GG biçiminde olmalı");
@@ -107,6 +124,167 @@ export function istanbulDayEndEpoch(date: string): number {
   return istanbulDayStartEpoch(addDays(date, 1)) - 1;
 }
 
+/** Epoch ms of the day AFTER `date` at 00:00:00.000 in Istanbul (half-open upper bound). */
+export function istanbulNextDayStartEpoch(date: string): number {
+  return istanbulDayStartEpoch(addDays(date, 1));
+}
+
+export interface IstanbulEpochRange {
+  /** Inclusive lower bound (from 00:00:00.000 Europe/Istanbul), or null when unbounded. */
+  startMs: number | null;
+  /** Exclusive upper bound (nextDay(to) 00:00:00.000 Europe/Istanbul), or null when unbounded. */
+  endExclusiveMs: number | null;
+}
+
+/** Half-open UTC epoch bounds [startMs, endExclusiveMs) for an inclusive Istanbul calendar-day range. */
+export function istanbulRangeBounds(from: string | null, to: string | null): IstanbulEpochRange {
+  return {
+    startMs: from && isValidIsoDate(from) ? istanbulDayStartEpoch(from) : null,
+    endExclusiveMs: to && isValidIsoDate(to) ? istanbulNextDayStartEpoch(to) : null,
+  };
+}
+
+const PERIOD_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+export interface IstanbulMonthRange {
+  period: string;
+  from: string;
+  to: string;
+  startMs: number;
+  endExclusiveMs: number;
+}
+
+/** Calendar bounds and half-open UTC epoch interval [monthStart, nextMonthStart) in Europe/Istanbul. */
+export function istanbulMonthRange(period: string): IstanbulMonthRange {
+  const match = PERIOD_RE.exec(period);
+  if (!match) throw new Error("Dönem YYYY-AA biçiminde olmalı: " + period);
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const from = `${match[1]}-${match[2]}-01`;
+  const to = `${match[1]}-${match[2]}-${pad(lastDay)}`;
+  return {
+    period,
+    from,
+    to,
+    startMs: istanbulDayStartEpoch(from),
+    endExclusiveMs: istanbulNextDayStartEpoch(to),
+  };
+}
+
+const TIMESTAMP_WITH_TZ_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+/**
+ * Parses a real timestamp (numeric epoch ms or ISO-8601 string with explicit time and timezone).
+ * Never parses date-only strings (YYYY-MM-DD) so they are never fabricated as 00:00 or shifted.
+ */
+export function parseTimestampMs(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || isValidIsoDate(trimmed)) return null;
+  if (/^\d{10,16}$/.test(trimmed)) {
+    const num = Number(trimmed);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  }
+  if (!TIMESTAMP_WITH_TZ_RE.test(trimmed)) return null;
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Converts either a date-only YYYY-MM-DD string (kept as-is without timezone shift)
+ * or a real timestamp (epoch ms / ISO timestamp with timezone) to its Europe/Istanbul YYYY-MM-DD day.
+ */
+export function istanbulDateFromTimestamp(value: string | number | null | undefined): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (isValidIsoDate(trimmed)) return trimmed;
+  }
+  const ms = parseTimestampMs(value);
+  return ms == null ? null : istanbulDateFromEpoch(ms);
+}
+
+/** Checks whether a UTC epoch ms lies inside [from 00:00 TR, nextDay(to) 00:00 TR). */
+export function isTimestampInIstanbulRange(
+  epochMs: number,
+  range: { from: string | null; to: string | null },
+): boolean {
+  const { startMs, endExclusiveMs } = istanbulRangeBounds(range.from, range.to);
+  if (startMs != null && epochMs < startMs) return false;
+  if (endExclusiveMs != null && epochMs >= endExclusiveMs) return false;
+  return true;
+}
+
+/**
+ * Checks whether a date-only YYYY-MM-DD string lies inside the half-open Istanbul calendar range
+ * [from, nextDay(to)) without ever converting through the browser's local timezone.
+ */
+export function isDateOnlyInIstanbulRange(
+  date: string,
+  range: { from: string | null; to: string | null },
+): boolean {
+  if (!isValidIsoDate(date)) return false;
+  if (range.from && isValidIsoDate(range.from) && date < range.from) return false;
+  if (range.to && isValidIsoDate(range.to) && date >= addDays(range.to, 1)) return false;
+  return true;
+}
+
+const ISTANBUL_WALL_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
+/** Converts an Istanbul wall-clock string ("YYYY-MM-DD HH:mm:ss[.SSS]") to UTC epoch ms. */
+export function istanbulWallTimeToEpoch(wallTime: string): number | null {
+  const match = ISTANBUL_WALL_RE.exec(wallTime.trim());
+  if (!match) return null;
+  const datePart = match[1];
+  if (!datePart || !isValidIsoDate(datePart)) return null;
+  const { y, m, d } = parseDate(datePart);
+  const hh = Number(match[2]);
+  const mm = Number(match[3]);
+  const ss = Number(match[4] ?? "0");
+  const ms = Number((match[5] ?? "0").padEnd(3, "0"));
+  if (hh > 23 || mm > 59 || ss > 59 || ms > 999) return null;
+  const wallAsUtc = Date.UTC(y, m - 1, d, hh, mm, ss, ms);
+  let guess = wallAsUtc - offsetAt(wallAsUtc);
+  guess = wallAsUtc - offsetAt(guess);
+  return guess;
+}
+
+const ORDER_TIME_ISO_NOTE_RE = /Sipariş:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))/;
+const ORDER_TIME_WALL_NOTE_RE = /Sipariş zamanı:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)\s*Europe\/Istanbul/;
+const RETURN_APPROVAL_NOTE_RE = /Son durum güncelleme:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)\s*Europe\/Istanbul/;
+
+/**
+ * Extracts real Trendyol timestamps preserved in a record note when the DB schema does not yet
+ * carry dedicated timestamp columns. Returns undefined when no real time was recorded.
+ */
+export function extractTrendyolTimestampsFromNote(note: string | null | undefined): {
+  orderedAt?: string;
+  approvedAt?: string;
+} {
+  if (!note) return {};
+  const out: { orderedAt?: string; approvedAt?: string } = {};
+  const orderIsoMatch = ORDER_TIME_ISO_NOTE_RE.exec(note);
+  if (orderIsoMatch?.[1]) {
+    const ms = parseTimestampMs(orderIsoMatch[1]);
+    if (ms != null) out.orderedAt = new Date(ms).toISOString();
+  } else {
+    const orderWallMatch = ORDER_TIME_WALL_NOTE_RE.exec(note);
+    if (orderWallMatch?.[1]) {
+      const ms = istanbulWallTimeToEpoch(orderWallMatch[1]);
+      if (ms != null) out.orderedAt = new Date(ms).toISOString();
+    }
+  }
+  const approvalMatch = RETURN_APPROVAL_NOTE_RE.exec(note);
+  if (approvalMatch?.[1]) {
+    const ms = istanbulWallTimeToEpoch(approvalMatch[1]);
+    if (ms != null) out.approvedAt = new Date(ms).toISOString();
+  }
+  return out;
+}
+
 export function addDays(date: string, days: number): string {
   const { y, m, d } = parseDate(date);
   const t = new Date(Date.UTC(y, m - 1, d + days));
@@ -131,6 +309,8 @@ export interface TrendyolQueryWindow {
   /** Epoch ms sent to Trendyol. */
   startDate: number;
   endDate: number;
+  /** Half-open exclusive upper bound (nextDay(to) 00:00:00.000 Europe/Istanbul). */
+  endExclusiveDate: number;
 }
 
 /**
@@ -146,11 +326,13 @@ export function trendyolQueryWindows(from: string, to: string, maxDaysPerWindow 
   while (daysBetween(cursor, to) >= 0) {
     const remaining = daysBetween(cursor, to) + 1;
     const windowEnd = addDays(cursor, Math.min(maxDaysPerWindow, remaining) - 1);
+    const endExclusiveDate = istanbulNextDayStartEpoch(windowEnd);
     windows.push({
       from: cursor,
       to: windowEnd,
       startDate: istanbulDayStartEpoch(cursor),
-      endDate: istanbulDayEndEpoch(windowEnd),
+      endDate: endExclusiveDate - 1,
+      endExclusiveDate,
     });
     cursor = addDays(windowEnd, 1);
   }

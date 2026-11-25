@@ -1,4 +1,16 @@
-import { istanbulDateFromEpoch, istanbulDateTimeFromEpoch, resolveSyncRange, trendyolQueryWindows } from "./trendyol-time.ts";
+import {
+  daysBetween,
+  extractTrendyolTimestampsFromNote,
+  istanbulDateFromEpoch,
+  istanbulDateTimeFromEpoch,
+  istanbulIsoFromEpoch,
+  isTimestampInIstanbulRange,
+  parseTimestampMs,
+  resolveSyncRange,
+  trendyolQueryWindows,
+} from "./trendyol-time.ts";
+
+type JsonObj = Record<string, unknown>;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -102,11 +114,11 @@ function amount(value: unknown): number {
   return Number.isFinite(number) && number > 0 ? Math.round(number * 100) / 100 : 0;
 }
 
-function packageStatus(pkg: any): string {
+function packageStatus(pkg: JsonObj): string {
   return String(pkg?.shipmentPackageStatus ?? pkg?.status ?? "").toLowerCase();
 }
 
-function recordType(pkg: any, line: any): "sale" | "return" | "cancellation" {
+function recordType(pkg: JsonObj, line: JsonObj): "sale" | "return" | "cancellation" {
   const packageState = packageStatus(pkg);
   const lineState = String(line?.orderLineItemStatusName ?? "").toLowerCase();
   if (packageState === "cancelled" || packageState === "unsupplied" || lineState === "cancelled") return "cancellation";
@@ -207,7 +219,7 @@ Deno.serve(async (req: Request) => {
     testUrl.searchParams.set("orderByField", "PackageLastModifiedDate");
     testUrl.searchParams.set("orderByDirection", "DESC");
 
-    let testResult: any;
+    let testResult: JsonObj;
     try {
       testResult = await fetchJson(testUrl.toString(), {
         Accept: "application/json",
@@ -249,7 +261,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "Geçersiz tarih aralığı." }, 400);
   }
-  const days = Math.round((Date.parse(syncRange.to) - Date.parse(syncRange.from)) / 86_400_000) + 1;
+  const days = daysBetween(syncRange.from, syncRange.to) + 1;
   const secretRpc = isScheduledSync ? "get_marketplace_secret_for_cron" : "get_marketplace_secret_for_user";
   const secretResponse = await fetch(url + "/rest/v1/rpc/" + secretRpc, {
     method: "POST",
@@ -274,8 +286,8 @@ Deno.serve(async (req: Request) => {
       Authorization: "Basic " + btoa(credentials.apiKey + ":" + credentials.apiSecret),
       "User-Agent": credentials.supplierId + " - SelfIntegration",
     };
-    const productMap = new Map<string, any>();
-    const variantMap = new Map<string, any>();
+    const productMap = new Map<string, JsonObj>();
+    const variantMap = new Map<string, JsonObj>();
     let page = 0;
     let nextPageToken = "";
     let pagesFetched = 0;
@@ -291,15 +303,15 @@ Deno.serve(async (req: Request) => {
           const contentId = String(item?.contentId ?? "");
           if (!contentId) continue;
           const productId = await stableUuid(body.store_id + "|trendyol-product|" + contentId);
-          const variants = Array.isArray(item?.variants) ? item.variants : [];
+          const variants = Array.isArray(item?.variants) ? (item.variants as JsonObj[]) : [];
           productMap.set(productId, {
             id: productId,
             external_product_id: contentId,
             title: String(item?.title ?? "Trendyol ürünü").slice(0, 500),
             category: String(item?.category?.name ?? "").slice(0, 250) || null,
             brand: String(item?.brand?.name ?? "").slice(0, 250) || null,
-            product_url: String(variants.find((v: any) => v?.productUrl)?.productUrl ?? "").slice(0, 2000) || null,
-            status: variants.some((v: any) => v?.onSale) ? "active" : "inactive",
+            product_url: String(variants.find((v) => v?.productUrl)?.productUrl ?? "").slice(0, 2000) || null,
+            status: variants.some((v) => v?.onSale) ? "active" : "inactive",
           });
           for (const variant of variants) {
             const barcode = String(variant?.barcode ?? "").trim();
@@ -308,7 +320,7 @@ Deno.serve(async (req: Request) => {
             if (!barcode && !stockCode && !externalVariantId) continue;
             const variantId = await stableUuid(body.store_id + "|trendyol-variant|" + contentId + "|" + externalVariantId + "|" + barcode);
             const variantName = Array.isArray(variant?.attributes)
-              ? variant.attributes.map((a: any) => String(a?.attributeValue ?? "")).filter(Boolean).join(" / ").slice(0, 250)
+              ? (variant.attributes as JsonObj[]).map((a) => String(a?.attributeValue ?? "")).filter(Boolean).join(" / ").slice(0, 250)
               : "";
             variantMap.set(variantId, {
               id: variantId, product_id: productId,
@@ -347,8 +359,8 @@ Deno.serve(async (req: Request) => {
     try {
       for (let offset = 0; offset < products.length; offset += 250) {
         const productBatch = products.slice(offset, offset + 250);
-        const productIds = new Set(productBatch.map((p: any) => p.id));
-        const variantBatch = variants.filter((v: any) => productIds.has(v.product_id));
+        const productIds = new Set(productBatch.map((p) => p.id));
+        const variantBatch = variants.filter((v) => productIds.has(v.product_id));
         const saveResponse = await fetch(url + "/rest/v1/rpc/import_trendyol_products", {
           method: "POST", headers: { ...authHeaders, "Content-Type": "application/json" },
           body: JSON.stringify({ p_store_id: body.store_id, p_products: productBatch, p_variants: variantBatch }),
@@ -383,7 +395,7 @@ Deno.serve(async (req: Request) => {
   // Istanbul day boundaries: start 00:00:00.000, end 23:59:59.999 local time (see trendyol-time.ts).
   const queryWindows = trendyolQueryWindows(syncRange.from, syncRange.to, 13);
   const endDate = queryWindows[queryWindows.length - 1]?.endDate ?? Date.now();
-  const packagesById = new Map<string, any>();
+  const packagesById = new Map<string, JsonObj>();
   let totalElements = 0;
 
   try {
@@ -434,7 +446,7 @@ Deno.serve(async (req: Request) => {
   if (!productResponse.ok || !variantResponse.ok) return json({ error: "Mağaza ürün eşleştirmeleri okunamadı." }, 500);
   const productRows = await productResponse.json();
   const variantRows = await variantResponse.json();
-  const storeProductIds = new Set((productRows ?? []).map((row: any) => String(row.id)));
+  const storeProductIds = new Set(((productRows ?? []) as JsonObj[]).map((row) => String(row.id)));
   const productByCode = new Map<string, string>();
   for (const variant of variantRows ?? []) {
     const productId = String(variant.product_id ?? "");
@@ -443,7 +455,7 @@ Deno.serve(async (req: Request) => {
     if (variant.sku) productByCode.set(String(variant.sku).trim().toLowerCase(), productId);
   }
 
-  const recordsById = new Map<string, any>();
+  const recordsById = new Map<string, JsonObj>();
   let matchedProducts = 0;
   let unmatchedProducts = 0;
   let saleLines = 0;
@@ -453,21 +465,25 @@ Deno.serve(async (req: Request) => {
   for (const pkg of packages) {
     const state = packageStatus(pkg);
     if (state === "unpacked" || state === "awaiting") continue;
-    const lines = Array.isArray(pkg?.lines) ? pkg.lines : [];
+    const lines = Array.isArray(pkg?.lines) ? (pkg.lines as JsonObj[]) : [];
+    const realOrderEpoch = parseTimestampMs(pkg?.orderDate) ?? parseTimestampMs(pkg?.createdDate);
+    const effectiveOrderEpoch = realOrderEpoch ?? parseTimestampMs(pkg?.lastModifiedDate) ?? Date.now();
+    const orderRecordDate = localDate(effectiveOrderEpoch);
+    const orderTimestampNote = realOrderEpoch ? "Sipariş:" + istanbulIsoFromEpoch(realOrderEpoch) : "";
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
       const quantity = Math.max(1, Math.floor(Number(line?.quantity) || 1));
       const type = recordType(pkg, line);
-      // Returns are sourced from the dedicated claims endpoint below, using the approval/update date.
-      // Do not also count returned shipment packages: that would duplicate returns and use order date.
+      // Returns are sourced from the dedicated claims endpoint below so partial/approved claims
+      // are not duplicated, while keeping the original order date for period reporting.
       if (type === "return") continue;
       const unitGross = amount(line?.lineGrossAmount) ||
         amount(line?.lineUnitPrice) + amount(line?.lineSellerDiscount) / quantity + amount(line?.lineTyDiscount) / quantity;
       const gross = Math.round(unitGross * quantity * 100) / 100;
       if (gross <= 0) continue;
 
-      const details = Array.isArray(line?.discountDetails) ? line.discountDetails : [];
-      const detailSellerDiscount = details.reduce((sum: number, item: any) => sum + amount(item?.lineItemSellerDiscount), 0);
+      const details = Array.isArray(line?.discountDetails) ? (line.discountDetails as JsonObj[]) : [];
+      const detailSellerDiscount = details.reduce((sum: number, item) => sum + amount(item?.lineItemSellerDiscount), 0);
       const sellerDiscount = Math.min(gross, Math.round((detailSellerDiscount || amount(line?.lineSellerDiscount)) * 100) / 100);
       const barcode = String(line?.barcode ?? "").trim();
       const stockCode = String(line?.stockCode ?? "").trim();
@@ -487,6 +503,7 @@ Deno.serve(async (req: Request) => {
         "Durum:" + String(pkg?.shipmentPackageStatus ?? pkg?.status ?? "Bilinmiyor"),
         barcode ? "Barkod:" + barcode : "",
         "Satır:" + lineId,
+        orderTimestampNote,
         stockCode ? "Stok:" + stockCode : "",
         tyDiscount ? "Trendyol katkısı:" + tyDiscount.toFixed(2) + " TL (satıcı indirimi değildir)" : "",
         commissionRate ? "Komisyon oranı:%" + commissionRate : "",
@@ -497,7 +514,8 @@ Deno.serve(async (req: Request) => {
         id: stableId,
         record_type: type,
         order_number: orderNumber,
-        record_date: localDate(Number(pkg?.orderDate ?? pkg?.createdDate ?? pkg?.lastModifiedDate ?? Date.now())),
+        record_date: orderRecordDate,
+        ordered_at: realOrderEpoch ? new Date(realOrderEpoch).toISOString() : null,
         product_id: productId,
         quantity,
         gross_amount: gross,
@@ -523,7 +541,7 @@ Deno.serve(async (req: Request) => {
   try {
     const claimWindows = trendyolQueryWindows(syncRange.from, syncRange.to, 13);
     const acceptedClaimItems: Array<{
-      id: string; claimId: string; orderNumber: string; approvedAt: number;
+      id: string; claimId: string; orderNumber: string; orderDate: number | null; approvedAt: number;
       quantity: number; gross: number; barcode: string; merchantSku: string;
       productId: string | null; outboundPackageId: string; orderLineItemId: string;
     }> = [];
@@ -540,8 +558,9 @@ Deno.serve(async (req: Request) => {
         const content = Array.isArray(result?.content) ? result.content : [];
         claimsReceived += content.length;
         for (const claim of content) {
-        const approvedAt = Number(claim?.lastModifiedDate ?? 0);
-        if (!approvedAt || localDate(approvedAt) < syncRange.from || localDate(approvedAt) > syncRange.to) continue;
+        const approvedAt = parseTimestampMs(claim?.lastModifiedDate);
+        if (approvedAt == null || !isTimestampInIstanbulRange(approvedAt, syncRange)) continue;
+        const claimOrderDate = parseTimestampMs(claim?.orderDate);
         const claimId = String(claim?.id ?? claim?.claimId ?? "");
         const orderNumber = String(claim?.orderNumber ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 50);
         if (!claimId || !orderNumber) continue;
@@ -564,7 +583,7 @@ Deno.serve(async (req: Request) => {
             const productId = productByCode.get(barcode.toLowerCase()) ??
               productByCode.get(merchantSku.toLowerCase()) ?? null;
             acceptedClaimItems.push({
-              id: claimItemId, claimId, orderNumber, approvedAt, quantity, gross,
+              id: claimItemId, claimId, orderNumber, orderDate: claimOrderDate, approvedAt, quantity, gross,
               barcode, merchantSku, productId, outboundPackageId,
               orderLineItemId: String(item?.orderLineItemId ?? orderLine?.id ?? ""),
             });
@@ -580,7 +599,7 @@ Deno.serve(async (req: Request) => {
     // Match each returned unit to its original sale line so its seller discount is reversed,
     // while cancellation discounts remain excluded from Trendyol's headline discount figure.
     const orderNumbers = [...new Set(acceptedClaimItems.map((item) => item.orderNumber))];
-    let originalSaleRows: any[] = [];
+    let originalSaleRows: JsonObj[] = [];
     if (orderNumbers.length) {
       const originalUrl = new URL(url + "/rest/v1/order_records");
       originalUrl.searchParams.set("store_id", "eq." + body.store_id);
@@ -596,10 +615,11 @@ Deno.serve(async (req: Request) => {
     // Include sale lines collected in this same sync. They are not in order_records
     // until the final import batch, so querying only the database misses them.
     const currentSyncSales = [...recordsById.values()]
-      .filter((row: any) => row.record_type === "sale")
-      .map((row: any) => ({
+      .filter((row) => row.record_type === "sale")
+      .map((row) => ({
         order_number: row.order_number,
         record_date: row.record_date,
+        ordered_at: row.ordered_at ?? null,
         quantity: row.quantity,
         gross_amount: row.gross_amount,
         discount_amount: row.discount_amount,
@@ -612,12 +632,12 @@ Deno.serve(async (req: Request) => {
       const lineMarker = item.orderLineItemId ? "Satır:" + item.orderLineItemId : "";
       const packageMarker = item.outboundPackageId ? "Paket:" + item.outboundPackageId : "";
       const barcodeMarker = item.barcode ? "Barkod:" + item.barcode : "";
-      const matchingSale = originalSaleRows.find((row: any) =>
+      const matchingSale = originalSaleRows.find((row) =>
         row.order_number === item.orderNumber &&
         ((lineMarker && String(row.note ?? "").includes(lineMarker)) ||
           (packageMarker && barcodeMarker && String(row.note ?? "").includes(packageMarker) &&
             String(row.note ?? "").includes(barcodeMarker)))
-      ) ?? originalSaleRows.find((row: any) =>
+      ) ?? originalSaleRows.find((row) =>
         row.order_number === item.orderNumber && barcodeMarker && String(row.note ?? "").includes(barcodeMarker)
       );
       const originalQuantity = Math.max(1, Number(matchingSale?.quantity) || 1);
@@ -633,15 +653,27 @@ Deno.serve(async (req: Request) => {
       const returnGross = Math.round(originalGrossPerUnit * item.quantity * 100) / 100;
       if (matchingSale) matchedReturnDiscountAmount += discountAmount + couponAmount;
       else unmatchedReturnDiscountLines += 1;
+      const saleOrderedMs =
+        parseTimestampMs(matchingSale?.ordered_at) ??
+        parseTimestampMs(extractTrendyolTimestampsFromNote(String(matchingSale?.note ?? "")).orderedAt) ??
+        item.orderDate;
+      const returnRecordDate =
+        (saleOrderedMs != null ? localDate(saleOrderedMs) : null) ??
+        (typeof matchingSale?.record_date === "string" ? matchingSale.record_date : null) ??
+        localDate(item.approvedAt);
       const stableId = await stableUuid(body.store_id + "|trendyol-claim|" + item.claimId + "|" + item.id);
       recordsById.set(stableId, {
         id: stableId, record_type: "return", order_number: item.orderNumber,
         // Store returns against the original sale date, matching Trendyol store-summary reporting.
-        record_date: matchingSale?.record_date ?? localDate(item.approvedAt), product_id: item.productId, quantity: item.quantity,
+        record_date: returnRecordDate,
+        ordered_at: saleOrderedMs != null ? new Date(saleOrderedMs).toISOString() : null,
+        approved_at: new Date(item.approvedAt).toISOString(),
+        product_id: item.productId, quantity: item.quantity,
         gross_amount: returnGross, discount_amount: discountAmount, coupon_amount: couponAmount,
         commission_amount: 0, shipping_amount: 0, withholding_amount: 0,
         note: ("Onaylı Trendyol iadesi | Talep:" + item.claimId + " | Kalem:" + item.id +
           " | Paket:" + item.outboundPackageId + (item.barcode ? " | Barkod:" + item.barcode : "") +
+          (saleOrderedMs != null ? " | Sipariş:" + istanbulIsoFromEpoch(saleOrderedMs) : "") +
           (matchingSale ? " | İade indirimi eşleşti" : " | İade indirimi için satış satırı bulunamadı") +
           " | Son durum güncelleme: " + istanbulDateTimeFromEpoch(item.approvedAt) + " Europe/Istanbul").slice(0, 300),
       });

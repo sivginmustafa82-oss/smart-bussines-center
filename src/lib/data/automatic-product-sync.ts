@@ -2,8 +2,13 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Product } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
 import { clearPendingProductEdits, getPendingProductEdits, persistCloudIdMap, scoped } from "./repo";
+import {
+  istanbulDateFromTimestamp,
+  istanbulToday,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
+const str = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -64,31 +69,38 @@ export async function syncProductsAutomatically(): Promise<void> {
     readRows("product_costs", orgId),
   ]);
   costsRows.sort((a, b) =>
-    String(b.effective_from ?? "").localeCompare(String(a.effective_from ?? "")) ||
-    String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+    str(b["effective_from"]).localeCompare(str(a["effective_from"])) ||
+    str(b["created_at"]).localeCompare(str(a["created_at"])),
   );
 
   const variantByProduct = new Map<string, Row>();
   const latestCostByVariant = new Map<string, Row>();
-  for (const row of variantsRows) if (!variantByProduct.has(row.product_id)) variantByProduct.set(row.product_id, row);
-  for (const row of costsRows) if (!latestCostByVariant.has(row.variant_id)) latestCostByVariant.set(row.variant_id, row);
+  for (const row of variantsRows) {
+    const pid = str(row["product_id"]);
+    if (!variantByProduct.has(pid)) variantByProduct.set(pid, row);
+  }
+  for (const row of costsRows) {
+    const vid = str(row["variant_id"]);
+    if (!latestCostByVariant.has(vid)) latestCostByVariant.set(vid, row);
+  }
 
   const incoming: Product[] = productsRows.map((row) => {
-    const variant = variantByProduct.get(row.id);
-    const cost = variant ? latestCostByVariant.get(variant.id) : undefined;
+    const id = str(row["id"]);
+    const variant = variantByProduct.get(id);
+    const cost = variant ? latestCostByVariant.get(str(variant["id"])) : undefined;
     return {
-      id: localIdFor("product", row.id, idMap),
+      id: localIdFor("product", id, idMap),
       tenantId,
-      storeId: localIdFor("store", row.store_id, idMap),
-      name: row.title,
-      sku: variant?.sku ?? "",
-      barcode: variant?.barcode ?? "",
-      unitCost: cost ? Number(cost.unit_cost) : null,
-      vatRate: Number(variant?.vat_rate ?? 20),
-      source: row.data_source === "imported" ? "imported" : "manual",
-      verified: Boolean(row.verified),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at ?? row.created_at,
+      storeId: localIdFor("store", str(row["store_id"]), idMap),
+      name: str(row["title"]),
+      sku: str(variant?.["sku"]),
+      barcode: str(variant?.["barcode"]),
+      unitCost: cost ? Number(cost["unit_cost"]) : null,
+      vatRate: Number(variant?.["vat_rate"] ?? 20),
+      source: row["data_source"] === "imported" ? "imported" : "manual",
+      verified: Boolean(row["verified"]),
+      createdAt: str(row["created_at"]),
+      updatedAt: str(row["updated_at"] ?? row["created_at"]),
     };
   });
 
@@ -119,7 +131,7 @@ export async function syncProductsAutomatically(): Promise<void> {
     if (product.unitCost === null) {
       const remoteProductId = idMap["product:" + product.id] ?? product.id;
       const remoteVariant = variantByProduct.get(remoteProductId);
-      if (remoteVariant && latestCostByVariant.has(remoteVariant.id)) {
+      if (remoteVariant && latestCostByVariant.has(str(remoteVariant["id"]))) {
         throw new Error("Bu ürünün bulutta kayıtlı eski maliyeti var. Maliyet silme işlemi veri kaybını önlemek için otomatik eşitlemede bekletildi.");
       }
     }
@@ -152,7 +164,7 @@ export async function syncProductsAutomatically(): Promise<void> {
     variant_id: ensureCloudId(idMap, "variant", product.id),
     unit_cost: product.unitCost!,
     currency: "TRY",
-    effective_from: (product.updatedAt || product.createdAt).slice(0, 10),
+    effective_from: istanbulDateFromTimestamp(product.updatedAt || product.createdAt) ?? istanbulToday(),
     source: "manual",
   }));
 

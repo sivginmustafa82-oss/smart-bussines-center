@@ -3,7 +3,8 @@ import type { Store } from "@/lib/domain/types";
 import { readDB, readSession, subscribe, writeDB } from "./local-db";
 import { clearPendingStoreEdits, getPendingStoreEdits, persistCloudIdMap, scoped } from "./repo";
 
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
+const str = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 const MAP_PREFIX = "sbc:v1:cloud-id-map:";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -75,7 +76,10 @@ export async function syncStoresAutomatically(): Promise<void> {
     const { error } = await supabase.from("stores").upsert(rows.slice(offset, offset + 200), { onConflict: "id" });
     if (error) throw new Error("Mağaza otomatik eşitlenemedi: " + error.message);
   }
-  for (const store of upload) uploaded[store.id] = pending[store.id];
+  for (const store of upload) {
+    const version = pending[store.id];
+    if (version) uploaded[store.id] = version;
+  }
   clearPendingStoreEdits(tenantId, uploaded);
 
   const { data, error } = await supabase
@@ -86,15 +90,16 @@ export async function syncStoresAutomatically(): Promise<void> {
 
   const stillPending = getPendingStoreEdits(tenantId);
   const incoming: Store[] = ((data ?? []) as Row[]).map((row) => {
-    const id = localIdFor(row.id, idMap);
-    if (!idMap["store:" + id]) idMap["store:" + id] = row.id;
+    const cloudId = str(row["id"]);
+    const id = localIdFor(cloudId, idMap);
+    if (!idMap["store:" + id]) idMap["store:" + id] = cloudId;
     return {
       id,
       tenantId,
-      name: String(row.name ?? ""),
-      marketplace: marketplaceFromCloud(row.marketplace),
+      name: str(row["name"]),
+      marketplace: marketplaceFromCloud(row["marketplace"]),
       connectionStatus: "not_connected",
-      createdAt: row.created_at,
+      createdAt: str(row["created_at"]),
     };
   });
 

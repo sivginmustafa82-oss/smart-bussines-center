@@ -51,6 +51,8 @@ const orderSchema = z.object({
   type: z.enum(["sale", "return", "cancellation"]),
   orderNumber: z.string().min(1).max(50),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  orderedAt: timestamp.optional(),
+  approvedAt: timestamp.optional(),
   productId: id.nullable(),
   quantity: z.number().int().min(1).max(100000),
   grossAmount: amount,
@@ -208,7 +210,12 @@ export async function importTenantBackupFile(file: File): Promise<{
 
   const importedStores: Store[] = remapTenant(backup.stores);
   const importedProducts: Product[] = remapTenant(backup.products);
-  const importedOrders: OrderRecord[] = remapTenant(backup.orders);
+  const importedOrders: OrderRecord[] = backup.orders.map(({ orderedAt, approvedAt, ...rest }) => ({
+    ...rest,
+    tenantId: session.tenantId,
+    ...(orderedAt ? { orderedAt } : {}),
+    ...(approvedAt ? { approvedAt } : {}),
+  }));
   const importedExpenses: Expense[] = remapTenant(backup.expenses);
   const importedReconciliations: ReconciliationEntry[] = remapTenant(backup.reconciliations);
 

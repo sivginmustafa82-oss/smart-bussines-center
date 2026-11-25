@@ -83,6 +83,13 @@ export interface Product {
  * For return/cancellation lines grossAmount is the reversed sale amount and
  * discount/coupon/commission/withholding are the amounts reversed back;
  * shippingAmount is always an extra cost (e.g. return shipping).
+ *
+ * Date semantics (consistent with Trendyol store summary, Europe/Istanbul UTC+3):
+ * - `date` is the original order's Istanbul calendar date (YYYY-MM-DD).
+ * - `orderedAt` preserves the exact ISO-8601 timestamp of the original order ONLY when
+ *   the data source provides a real timestamp (never fabricated for date-only/manual rows).
+ * - `approvedAt` preserves a return's approval/update ISO-8601 timestamp separately from
+ *   the original order date, so reporting periods never conflate the two concepts.
  */
 export interface OrderRecord {
   id: string;
@@ -91,6 +98,10 @@ export interface OrderRecord {
   type: RecordType;
   orderNumber: string;
   date: string; // YYYY-MM-DD
+  /** Exact ISO-8601 timestamp of the original order when known from source; omitted when date-only. */
+  orderedAt?: string;
+  /** Exact ISO-8601 timestamp when a return claim was approved/updated; kept separate from order date. */
+  approvedAt?: string;
   productId: string | null;
   quantity: number;
   grossAmount: number;

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parseAmount } from "@/lib/format";
 import { VAT_RATES } from "./labels";
 import type { Expense, MarketplaceTotals, OrderRecord, Product } from "./types";
+import { isValidIsoDate } from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 const MAX_AMOUNT = 1_000_000_000;
 
@@ -49,7 +50,7 @@ export const optionalMoneyField = (label: string) =>
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Geçerli bir tarih seçin")
-  .refine((s) => !Number.isNaN(new Date(s).getTime()), "Geçerli bir tarih seçin");
+  .refine((s) => isValidIsoDate(s), "Geçerli bir tarih seçin");
 
 export const signUpSchema = z.object({
   name: z.string().trim().min(2, "Ad en az 2 karakter olmalı").max(80, "Ad en fazla 80 karakter"),
