@@ -103,7 +103,13 @@ export async function syncStoresAutomatically(): Promise<void> {
   const current = scoped(readDB(), tenantId).stores;
   const merged = new Map(current.map((store) => [store.id, store]));
   for (const remote of incoming) {
-    if (stillPending[remote.id]) continue;
+    const local = merged.get(remote.id);
+    if (stillPending[remote.id] && local) {
+      // Pending store edits are name changes only. Keep the user's unsynced name,
+      // but still refresh cloud-owned fields such as Trendyol connectionStatus.
+      merged.set(remote.id, { ...remote, name: local.name });
+      continue;
+    }
     merged.set(remote.id, remote);
   }
   const next = [...merged.values()];
