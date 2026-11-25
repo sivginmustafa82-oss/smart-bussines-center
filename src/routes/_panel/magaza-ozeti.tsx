@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   BadgePercent,
@@ -14,6 +15,9 @@ import { useFilteredProfit } from "@/components/app/useProfit";
 import { PageHeader, Panel, Money } from "@/components/app/ui-bits";
 import { calculateSalesSummary } from "@/lib/domain/sales-summary";
 import { formatNumber } from "@/lib/format";
+import { supabase } from "@/integrations/supabase/client";
+import { syncWorkspaceWithCloud } from "@/lib/data/cloud-sync";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_panel/magaza-ozeti")({
   head: () => ({
@@ -33,6 +37,47 @@ const money = (value: number) => new Intl.NumberFormat("tr-TR", {
 
 function StoreSummary() {
   const { ws, records, filters } = useFilteredProfit();
+  const [syncingPeriod, setSyncingPeriod] = useState(false);
+
+  async function refreshSelectedPeriod() {
+    if (!filters.from || !filters.to) {
+      toast.error("Önce başlangıç ve bitiş tarihini seçin.");
+      return;
+    }
+    const targetStores = (filters.storeId === "all"
+      ? ws.stores
+      : ws.stores.filter((store) => store.id === filters.storeId))
+      .filter((store) => store.marketplace === "trendyol" && store.connectionStatus === "connected");
+    if (!targetStores.length) {
+      toast.error("Seçili mağazada bağlı bir Trendyol hesabı bulunamadı.");
+      return;
+    }
+
+    setSyncingPeriod(true);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
+      for (const store of targetStores) {
+        const { data, error } = await supabase.functions.invoke("smart-business-api", {
+          body: {
+            action: "sync_trendyol_orders",
+            store_id: store.id,
+            start_date: filters.from,
+            end_date: filters.to,
+          },
+          headers: { Authorization: "Bearer " + sessionData.session.access_token },
+        });
+        if (error) throw new Error(error.message);
+        if (!data?.ok) throw new Error(data?.error || store.name + " siparişleri aktarılamadı.");
+      }
+      await syncWorkspaceWithCloud();
+      toast.success("Seçili dönem Trendyol +3 saat kuralıyla yeniden aktarıldı.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Tarih aralığı yeniden aktarılamadı.");
+    } finally {
+      setSyncingPeriod(false);
+    }
+  }
   const summary = calculateSalesSummary(records);
   const storeName = ws.stores.find((store) => store.id === filters.storeId)?.name ?? "Tüm mağazalar";
   const period = filters.from || filters.to
@@ -100,9 +145,19 @@ function StoreSummary() {
       <div className="mb-4 flex items-start gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
         <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
         <p>
-          Tarih aralığı Türkiye saatiyle hesaplanır (Europe/Istanbul). Sipariş ve iade zaman damgaları önce
-          Türkiye takvim gününe çevrilir; başlangıç ve bitiş günleri dahildir. 2026 için saat farkı UTC+3'tür.
+          Trendyol tarih aralığı zorunlu +3 saat kuralıyla hesaplanır. Sipariş ve onaylı iade zaman damgaları
+          aynı kuralla normalize edilir; başlangıç ve bitiş günleri dahildir. Bu düzeltme yalnızca bir kez uygulanır.
         </p>
+      </div>
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          onClick={refreshSelectedPeriod}
+          disabled={syncingPeriod || !filters.from || !filters.to}
+          className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {syncingPeriod ? "Trendyol'dan aktarılıyor..." : "Seçili tarihleri Trendyol'dan yeniden aktar"}
+        </button>
       </div>
 
       <section className="relative mb-5 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-5 text-white shadow-xl sm:p-7">
