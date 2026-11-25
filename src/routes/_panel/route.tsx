@@ -9,6 +9,8 @@ import { restoreSession } from "@/lib/data/auth";
 import { startAutomaticProductSync } from "@/lib/data/automatic-product-sync";
 import { startAutomaticStoreSync } from "@/lib/data/automatic-store-sync";
 import { startAutomaticRecordSync } from "@/lib/data/automatic-record-sync";
+import { syncWorkspaceWithCloud } from "@/lib/data/cloud-sync";
+import { readSession } from "@/lib/data/local-db";
 
 export const Route = createFileRoute("/_panel")({
   // Supabase client session is currently browser-managed; validate it before rendering this area.
@@ -29,10 +31,35 @@ export const Route = createFileRoute("/_panel")({
 
 function PanelLayout() {
   useEffect(() => {
-    const stopProductSync = startAutomaticProductSync();
-    const stopStoreSync = startAutomaticStoreSync();
-    const stopRecordSync = startAutomaticRecordSync();
+    let stopped = false;
+    let stopProductSync = () => {};
+    let stopStoreSync = () => {};
+    let stopRecordSync = () => {};
+
+    async function initializeCloudData() {
+      const session = readSession();
+      if (session?.cloudOrganizationId && session.authProvider === "supabase") {
+        const marker = "sbc:v1:cloud-sync:" + session.tenantId;
+        if (!window.localStorage.getItem(marker)) {
+          try {
+            // First login on a browser/preview automatically downloads the existing
+            // cloud workspace before report pages read the local cache.
+            await syncWorkspaceWithCloud();
+          } catch (error) {
+            console.error("[AutoSync] Initial cloud download failed:", error);
+          }
+        }
+      }
+
+      if (stopped) return;
+      stopProductSync = startAutomaticProductSync();
+      stopStoreSync = startAutomaticStoreSync();
+      stopRecordSync = startAutomaticRecordSync();
+    }
+
+    void initializeCloudData();
     return () => {
+      stopped = true;
       stopProductSync();
       stopStoreSync();
       stopRecordSync();
