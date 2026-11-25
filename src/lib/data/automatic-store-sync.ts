@@ -78,9 +78,11 @@ export async function syncStoresAutomatically(): Promise<void> {
   for (const store of upload) uploaded[store.id] = pending[store.id];
   clearPendingStoreEdits(tenantId, uploaded);
 
+  // Preserve the authoritative connection state stored in the cloud. Previously this
+  // query omitted connection_status and every pulled store was forced to not_connected.
   const { data, error } = await supabase
     .from("stores")
-    .select("id, marketplace, name, created_at, updated_at")
+    .select("id, marketplace, name, connection_status, created_at, updated_at")
     .eq("organization_id", organizationId);
   if (error) throw new Error("Buluttaki mağazalar okunamadı: " + error.message);
 
@@ -93,7 +95,7 @@ export async function syncStoresAutomatically(): Promise<void> {
       tenantId,
       name: String(row.name ?? ""),
       marketplace: marketplaceFromCloud(row.marketplace),
-      connectionStatus: "not_connected",
+      connectionStatus: row.connection_status === "connected" ? "connected" : "not_connected",
       createdAt: row.created_at,
     };
   });
