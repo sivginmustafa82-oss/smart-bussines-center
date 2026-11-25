@@ -40,6 +40,29 @@ function localIdFor(kind: string, cloudId: string, map: Record<string, string>):
   return entry ? entry[0].slice(kind.length + 1) : cloudId;
 }
 
+/** Resolve a browser-local store ID to the UUID stored in Supabase. */
+export function cloudStoreIdForLocalId(localStoreId: string): string {
+  const session = readSession();
+  if (!session?.tenantId) throw new Error("Bulut oturumu bulunamadı. Yeniden giriş yapın.");
+
+  const idMapKey = "sbc:v1:cloud-id-map:" + session.tenantId;
+  let idMap: Record<string, string> = {};
+  try {
+    idMap = JSON.parse(window.localStorage.getItem(idMapKey) || "{}") as Record<string, string>;
+  } catch {
+    idMap = {};
+  }
+
+  const mapped = idMap["store:" + localStoreId];
+  if (mapped && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(mapped)) {
+    return mapped;
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(localStoreId)) {
+    return localStoreId;
+  }
+  throw new Error("Seçili mağazanın bulut kimliği bulunamadı. Mağaza bilgilerini bulutla eşitleyip yeniden deneyin.");
+}
+
 function mergeById<T extends { id: string }>(local: T[], incoming: T[]): T[] {
   const byId = new Map(local.map((row) => [row.id, row]));
   for (const row of incoming) byId.set(row.id, row);
