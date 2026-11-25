@@ -144,6 +144,30 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
     String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
   );
 
+  // Recover missing browser-to-cloud store mappings by an unambiguous marketplace + name match.
+  // This prevents a valid cloud store from being imported under its UUID while a stale local
+  // copy remains under a different ID with connectionStatus=not_connected.
+  const localStoresForMapping = scoped(readDB(), session.tenantId).stores;
+  const mappedLocalIds = new Set(
+    Object.keys(idMap).filter((key) => key.startsWith("store:")).map((key) => key.slice("store:".length)),
+  );
+  for (const row of storesRows) {
+    const alreadyMapped = Object.entries(idMap).some(([key, value]) =>
+      key.startsWith("store:") && value === row.id
+    );
+    if (alreadyMapped) continue;
+    const candidates = localStoresForMapping.filter((local) =>
+      !mappedLocalIds.has(local.id) &&
+      local.marketplace === marketplace(row.marketplace) &&
+      local.name.trim().toLocaleLowerCase("tr-TR") === String(row.name ?? "").trim().toLocaleLowerCase("tr-TR")
+    );
+    if (candidates.length === 1) {
+      idMap["store:" + candidates[0].id] = row.id;
+      mappedLocalIds.add(candidates[0].id);
+    }
+  }
+  window.localStorage.setItem(idMapKey, JSON.stringify(idMap));
+
   const storeIdMap = new Map<string, string>();
   const productIdMap = new Map<string, string>();
   const variantByProduct = new Map<string, Row>();
