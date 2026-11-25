@@ -137,9 +137,10 @@ export interface TrendyolQueryWindow {
 }
 
 /**
- * Splits an inclusive Istanbul day range into API windows aligned to local midnight.
- * Each window covers at most `maxDaysPerWindow` local days, keeping requests inside
- * Trendyol's two-week query limit. Windows are contiguous: next.startDate = prev.endDate + 1.
+ * Splits an inclusive seller report-date range into API windows. Boundaries use the
+ * mandatory +3-hour rule (UTC midnight boundaries for current Istanbul UTC+3 dates).
+ * Each window covers at most `maxDaysPerWindow` days. Windows are contiguous:
+ * next.startDate = prev.endDate + 1.
  */
 export function trendyolQueryWindows(from: string, to: string, maxDaysPerWindow = 13): TrendyolQueryWindow[] {
   if (daysBetween(from, to) < 0) throw new Error("Başlangıç tarihi bitiş tarihinden sonra olamaz");
