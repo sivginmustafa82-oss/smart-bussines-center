@@ -49,7 +49,7 @@ function AuthPage() {
   const go = () => {
     const target = safeRedirect(redirect);
     if (target && target !== "/giris") navigate({ href: target, replace: true });
-    else navigate({ to: "/genel-bakis", replace: true });
+    else navigate({ to: "/magaza-ozeti", replace: true });
   };
 
   useEffect(() => {
