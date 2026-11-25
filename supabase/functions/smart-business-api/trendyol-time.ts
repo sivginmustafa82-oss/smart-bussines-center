@@ -1,18 +1,15 @@
 /**
- * Pure Europe/Istanbul date helpers for the Trendyol API.
- * No Deno/Node APIs: the edge function imports this file and the app's Vitest suite tests it.
+ * Europe/Istanbul date helpers for Trendyol order synchronization.
+ * Trendyol timestamps are epoch milliseconds (UTC instants). Convert them to
+ * the seller's calendar date in Europe/Istanbul; never shift an epoch by a
+ * hard-coded three hours. This also handles any historical timezone rules.
  *
- * Trendyol's reporting convention used by the seller applies a mandatory +3 hour
- * boundary shift. For a selected calendar range [from, to], query boundaries are
- * Istanbul midnight/end-of-day shifted forward by 3 hours. This intentionally makes
- * the API window equivalent to UTC date boundaries and includes early-hours records
- * (up to 02:59:59 Istanbul wall-clock on the following date) in the preceding report day.
- * The same offset is removed when assigning an API timestamp to a report date.
- * Never add another +3 in the browser: order_records.date is already normalized.
+ * Database order_records.date is stored as a date-only YYYY-MM-DD value after
+ * this normalization. The browser must not apply another timezone offset.
  */
 export const TRENDYOL_TIME_ZONE = "Europe/Istanbul";
 const DAY_MS = 86_400_000;
-const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_RE = /^(\\d{4})-(\\d{2})-(\\d{2})$/;
 
 const partsFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: TRENDYOL_TIME_ZONE,
@@ -52,11 +49,10 @@ export function istanbulParts(epochMs: number): IstanbulParts {
 
 const pad = (n: number, len = 2) => String(n).padStart(len, "0");
 
-/** Calendar date used by Trendyol reports: remove the mandatory +3-hour boundary offset once. */
+/** Trendyol epoch-ms timestamp → actual seller calendar date in Europe/Istanbul. */
 export function trendyolReportDateFromEpoch(epochMs: number): string {
-  if (!Number.isFinite(epochMs)) throw new Error("Geçersiz zaman damgası");
-  const shifted = new Date(epochMs - 3 * 60 * 60 * 1000);
-  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
+  const p = istanbulParts(epochMs);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 
 /** "YYYY-MM-DD HH:mm:ss.SSS" in Istanbul — for notes and debugging. */
@@ -95,17 +91,16 @@ function offsetAt(epochMs: number): number {
   return asUtc - epochMs;
 }
 
-/** Epoch ms of `date` 00:00:00.000 in Istanbul. Handles historic offset changes. */
+/** Epoch ms of `date` 00:00:00.000 in Istanbul. Handles timezone transitions. */
 export function istanbulDayStartEpoch(date: string): number {
   const { y, m, d } = parseDate(date);
   const wallAsUtc = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
   let guess = wallAsUtc - offsetAt(wallAsUtc);
-  // Re-check once in case the offset differs at the corrected instant (DST transitions).
   guess = wallAsUtc - offsetAt(guess);
   return guess;
 }
 
-/** Epoch ms of `date` 23:59:59.999 in Istanbul (one millisecond before the next local midnight). */
+/** Epoch ms of `date` 23:59:59.999 in Istanbul. */
 export function istanbulDayEndEpoch(date: string): number {
   return istanbulDayStartEpoch(addDays(date, 1)) - 1;
 }
@@ -138,10 +133,9 @@ export interface TrendyolQueryWindow {
 }
 
 /**
- * Splits an inclusive seller report-date range into API windows. Boundaries use the
- * mandatory +3-hour rule (UTC midnight boundaries for current Istanbul UTC+3 dates).
- * Each window covers at most `maxDaysPerWindow` days. Windows are contiguous:
- * next.startDate = prev.endDate + 1.
+ * Splits an inclusive Istanbul calendar-date range into API windows.
+ * Each window uses Istanbul local midnight through local 23:59:59.999,
+ * represented as UTC epoch milliseconds. Windows are contiguous and non-overlapping.
  */
 export function trendyolQueryWindows(from: string, to: string, maxDaysPerWindow = 13): TrendyolQueryWindow[] {
   if (daysBetween(from, to) < 0) throw new Error("Başlangıç tarihi bitiş tarihinden sonra olamaz");
@@ -154,8 +148,8 @@ export function trendyolQueryWindows(from: string, to: string, maxDaysPerWindow 
     windows.push({
       from: cursor,
       to: windowEnd,
-      startDate: istanbulDayStartEpoch(cursor) + 3 * 60 * 60 * 1000,
-      endDate: istanbulDayEndEpoch(windowEnd) + 3 * 60 * 60 * 1000,
+      startDate: istanbulDayStartEpoch(cursor),
+      endDate: istanbulDayEndEpoch(windowEnd),
     });
     cursor = addDays(windowEnd, 1);
   }
@@ -166,7 +160,7 @@ export const MAX_SYNC_RANGE_DAYS = 31;
 
 /**
  * Resolves the requested order-sync range.
- * Explicit start_date/end_date (Istanbul days) win; otherwise the last `days` Istanbul days
+ * Explicit start_date/end_date (Istanbul calendar days) win; otherwise the last `days` Istanbul days
  * ending today are used (legacy clients send only `days`).
  */
 export function resolveSyncRange(
