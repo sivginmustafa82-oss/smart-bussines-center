@@ -2,11 +2,13 @@
  * Pure Europe/Istanbul date helpers for the Trendyol API.
  * No Deno/Node APIs: the edge function imports this file and the app's Vitest suite tests it.
  *
- * Trendyol sends and expects Unix epoch milliseconds. A seller thinks in Istanbul calendar
- * days, so a selected range [from, to] becomes
- *   startDate = from 00:00:00.000 Istanbul time
- *   endDate   = to   23:59:59.999 Istanbul time
- * independent of the server's own time zone (edge functions run in UTC).
+ * Trendyol's reporting convention used by the seller applies a mandatory +3 hour
+ * boundary shift. For a selected calendar range [from, to], query boundaries are
+ * Istanbul midnight/end-of-day shifted forward by 3 hours. This intentionally makes
+ * the API window equivalent to UTC date boundaries and includes early-hours records
+ * (up to 02:59:59 Istanbul wall-clock on the following date) in the preceding report day.
+ * The same offset is removed when assigning an API timestamp to a report date.
+ * Never add another +3 in the browser: order_records.date is already normalized.
  */
 export const TRENDYOL_TIME_ZONE = "Europe/Istanbul";
 const DAY_MS = 86_400_000;
@@ -50,10 +52,11 @@ export function istanbulParts(epochMs: number): IstanbulParts {
 
 const pad = (n: number, len = 2) => String(n).padStart(len, "0");
 
-/** Calendar day (YYYY-MM-DD) of an epoch-ms timestamp in Istanbul. */
-export function istanbulDateFromEpoch(epochMs: number): string {
-  const p = istanbulParts(epochMs);
-  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+/** Calendar date used by Trendyol reports: remove the mandatory +3-hour boundary offset once. */
+export function trendyolReportDateFromEpoch(epochMs: number): string {
+  if (!Number.isFinite(epochMs)) throw new Error("Geçersiz zaman damgası");
+  const shifted = new Date(epochMs - 3 * 60 * 60 * 1000);
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
 }
 
 /** "YYYY-MM-DD HH:mm:ss.SSS" in Istanbul — for notes and debugging. */
@@ -149,8 +152,8 @@ export function trendyolQueryWindows(from: string, to: string, maxDaysPerWindow 
     windows.push({
       from: cursor,
       to: windowEnd,
-      startDate: istanbulDayStartEpoch(cursor),
-      endDate: istanbulDayEndEpoch(windowEnd),
+      startDate: istanbulDayStartEpoch(cursor) + 3 * 60 * 60 * 1000,
+      endDate: istanbulDayEndEpoch(windowEnd) + 3 * 60 * 60 * 1000,
     });
     cursor = addDays(windowEnd, 1);
   }
