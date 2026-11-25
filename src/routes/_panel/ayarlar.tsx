@@ -29,12 +29,6 @@ import { importTenantBackupFile } from "@/lib/data/legacy-backup";
 import { exportTenantData, renameTenant, renameUser, wipeTenantData } from "@/lib/data/repo";
 import { supabase } from "@/integrations/supabase/client";
 import type { Store } from "@/lib/domain/types";
-import {
-  MAX_SYNC_RANGE_DAYS,
-  addDays,
-  daysBetween,
-  istanbulToday,
-} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export const Route = createFileRoute("/_panel/ayarlar")({
   head: () => ({
@@ -267,14 +261,6 @@ function Settings() {
             </p>
           )}
 
-          {syncResult && (
-            <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
-              <p className="font-medium text-success">Son bulut eşitlemesi</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {new Date(syncResult.syncedAt).toLocaleString("tr-TR")} · {syncResult.stores} mağaza · {syncResult.products} ürün · {syncResult.orders} sipariş · {syncResult.expenses} gider · {syncResult.reconciliations} mutabakat buluttan alındı.
-              </p>
-            </div>
-          )}
 
           {importResult && (
             <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
@@ -328,29 +314,11 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncingProducts, setIsSyncingProducts] = useState(false);
   const [productSyncError, setProductSyncError] = useState<string | null>(null);
   const [productSyncResult, setProductSyncResult] = useState<{products_received:number;variants_received:number;matched_order_lines:number} | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<{
-    packages_received: number; lines_imported: number; sale_lines: number;
-    cancellation_lines: number; return_lines: number; return_gross_amount?: number;
-    return_discount_matched?: number; return_discount_unmatched_lines?: number; claims_received?: number;
-    matched_products: number; unmatched_products: number;
-    start_date?: string; end_date?: string; query_start?: string; query_end?: string;
-  } | null>(null);
-  // Istanbul calendar days; the server converts them to 00:00:00.000 – 23:59:59.999 local time.
-  const [syncTo, setSyncTo] = useState("");
-  const [syncFrom, setSyncFrom] = useState("");
-  useEffect(() => {
-    const today = istanbulToday();
-    setSyncTo(today);
-    setSyncFrom(addDays(today, -29));
-  }, []);
-
   async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccess(null);
@@ -456,62 +424,6 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
     } finally { setIsSyncingProducts(false); }
   }
 
-  async function syncOrders() {
-    setSyncError(null);
-    setSyncResult(null);
-    const store = trendyolStores.find((item) => item.id === (selectedStoreId || selectedStore?.id));
-    if (!store) {
-      setSyncError("Aktarılacak Trendyol mağazası seçilemedi.");
-      return;
-    }
-    let cloudStoreId = store.id;
-    try {
-      const mapRaw = window.localStorage.getItem("sbc:v1:cloud-id-map:" + tenantId);
-      const map = mapRaw ? (JSON.parse(mapRaw) as Record<string, string>) : {};
-      cloudStoreId = map["store:" + store.id] || store.id;
-    } catch {
-      setSyncError("Mağaza bulut eşlemesi okunamadı. Önce bulut eşitlemesini çalıştırın.");
-      return;
-    }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cloudStoreId)) {
-      setSyncError("Mağaza henüz buluta aktarılmamış. Önce “Bulut eşitleme” bölümünden eşitleyin.");
-      return;
-    }
-    if (!syncFrom || !syncTo) {
-      setSyncError("Başlangıç ve bitiş tarihini seçin.");
-      return;
-    }
-    if (daysBetween(syncFrom, syncTo) < 0) {
-      setSyncError("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
-      return;
-    }
-    if (daysBetween(syncFrom, syncTo) + 1 > MAX_SYNC_RANGE_DAYS) {
-      setSyncError(`Tek seferde en fazla ${MAX_SYNC_RANGE_DAYS} gün aktarılabilir.`);
-      return;
-    }
-    setIsSyncing(true);
-    try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !sessionData.session) throw new Error("Oturum süreniz dolmuş. Yeniden giriş yapın.");
-      const { data, error: functionError } = await supabase.functions.invoke("smart-business-api", {
-        body: { action: "sync_trendyol_orders", store_id: cloudStoreId, start_date: syncFrom, end_date: syncTo },
-        headers: { Authorization: "Bearer " + sessionData.session.access_token },
-      });
-      if (functionError) throw new Error(functionError.message);
-      if (!data?.ok) throw new Error(data?.error || "Sipariş aktarımı tamamlanamadı.");
-      // Pull the imported cloud rows into this browser so dashboards refresh immediately.
-      await syncWorkspaceWithCloud();
-      setSyncResult(data);
-      toast.success("Seçilen tarih aralığındaki Trendyol siparişleri aktarıldı");
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Sipariş aktarımı sırasında hata oluştu.";
-      setSyncError(message);
-      toast.error("Trendyol sipariş aktarımı başarısız");
-    } finally {
-      setIsSyncing(false);
-    }
-  }
-
   return (
     <Panel
       title="Trendyol API bağlantısı"
@@ -597,32 +509,18 @@ function TrendyolConnectionPanel({ stores, tenantId }: { stores: Store[]; tenant
                 {" "}{productSyncResult.matched_order_lines} eski sipariş satırı ürünlerle eşleştirildi.
               </p>
             )}
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="space-y-1">
-                <label htmlFor="ty-sync-from" className="text-xs font-medium">Başlangıç</label>
-                <Input id="ty-sync-from" type="date" className="h-9 w-40" value={syncFrom} onChange={(e) => setSyncFrom(e.target.value)} />
+            <div className="flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-3 md:col-span-2" role="status">
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Otomatik sipariş aktarımı açık</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Trendyol siparişleri, iptaller ve onaylı iadeler sunucu tarafından her saat otomatik alınır.
+                  Her aktarım son 3 günü İstanbul saatiyle yeniden kontrol eder; böylece geç güncellenen durumlar da yakalanır.
+                  Bilgisayarınızın veya telefonunuzun açık kalması gerekmez. Manuel sipariş aktarımı yapmanız gerekmez.
+                </p>
               </div>
-              <div className="space-y-1">
-                <label htmlFor="ty-sync-to" className="text-xs font-medium">Bitiş</label>
-                <Input id="ty-sync-to" type="date" className="h-9 w-40" value={syncTo} onChange={(e) => setSyncTo(e.target.value)} />
-              </div>
-              <Button type="button" variant="outline" disabled={isSyncing || isConnecting} onClick={() => void syncOrders()}>
-                {isSyncing ? <Loader2 className="animate-spin" /> : <Download />}
-                {isSyncing ? "Siparişler aktarılıyor…" : "Bu tarih aralığındaki siparişleri aktar"}
-              </Button>
             </div>
-            <span className="text-xs text-muted-foreground">
-              Tarihler İstanbul saatine göre alınır: başlangıç günü 00:00:00, bitiş günü 23:59:59 dahil. En fazla {MAX_SYNC_RANGE_DAYS} gün.
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Mevcut manuel siparişler ve finans hareketleri silinmez; Trendyol kayıtları ayrı kaynak olarak eklenir.
-            </span>
           </div>
-          {syncError && (
-            <p className="md:col-span-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
-              {syncError}
-            </p>
-          )}
           {syncResult && (
             <p className="md:col-span-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm text-success" role="status">
               {syncResult.start_date && syncResult.end_date && (
