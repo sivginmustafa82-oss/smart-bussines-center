@@ -97,6 +97,13 @@ function StoreSummary() {
         description="Satışlarınızı, kesintilerinizi ve Trendyol ile mutabık net satışınızı tek ekranda takip edin."
       />
       <FilterBar stores={ws.stores} />
+      <div className="mb-4 flex items-start gap-2 rounded-xl border bg-muted/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+        <p>
+          Tarih aralığı Türkiye saatiyle hesaplanır (Europe/Istanbul). Sipariş ve iade zaman damgaları önce
+          Türkiye takvim gününe çevrilir; başlangıç ve bitiş günleri dahildir. 2026 için saat farkı UTC+3'tür.
+        </p>
+      </div>
 
       <section className="relative mb-5 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-5 text-white shadow-xl sm:p-7">
         <div className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-emerald-400/10 blur-3xl" />
