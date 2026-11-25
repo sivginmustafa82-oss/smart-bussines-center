@@ -79,7 +79,17 @@ function StoreSummary() {
           },
           headers: { Authorization: "Bearer " + sessionData.session.access_token },
         });
-        if (error) throw new Error(error.message);
+        if (error) {
+          // Supabase FunctionsHttpError carries the Edge Function Response in context.
+          // Read its JSON body so the user sees the actual server-side reason instead
+          // of the generic "Edge Function returned a non-2xx status code" message.
+          const context = (error as { context?: Response }).context;
+          const payload = context && typeof context.clone === "function"
+            ? await context.clone().json().catch(() => null)
+            : null;
+          const detail = typeof payload?.error === "string" ? payload.error : error.message;
+          throw new Error(store.name + ": " + detail);
+        }
         if (!data?.ok) throw new Error(data?.error || store.name + " siparişleri aktarılamadı.");
       }
       await syncWorkspaceWithCloud();
