@@ -9,7 +9,7 @@
  */
 export const TRENDYOL_TIME_ZONE = "Europe/Istanbul";
 const DAY_MS = 86_400_000;
-const DATE_RE = /^(\\d{4})-(\\d{2})-(\\d{2})$/;
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const partsFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: TRENDYOL_TIME_ZONE,
