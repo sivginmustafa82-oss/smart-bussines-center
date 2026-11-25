@@ -70,7 +70,25 @@ export function readDB(): DB {
   try {
     const raw = window.localStorage.getItem(DB_KEY);
     const parsed = raw ? (JSON.parse(raw) as DB) : null;
-    dbCache = parsed && parsed.version === 1 ? { ...emptyDB(), ...parsed } : emptyDB();
+    if (parsed && parsed.version === 1 && typeof parsed === "object") {
+      // Older or partially-written browser caches may contain missing/non-array
+      // collections. Keep every valid collection intact and safely default only
+      // malformed collection values so one bad field cannot crash a whole route.
+      const defaults = emptyDB();
+      dbCache = {
+        ...defaults,
+        ...parsed,
+        users: Array.isArray(parsed.users) ? parsed.users : defaults.users,
+        tenants: Array.isArray(parsed.tenants) ? parsed.tenants : defaults.tenants,
+        stores: Array.isArray(parsed.stores) ? parsed.stores : defaults.stores,
+        products: Array.isArray(parsed.products) ? parsed.products : defaults.products,
+        orders: Array.isArray(parsed.orders) ? parsed.orders : defaults.orders,
+        expenses: Array.isArray(parsed.expenses) ? parsed.expenses : defaults.expenses,
+        reconciliations: Array.isArray(parsed.reconciliations) ? parsed.reconciliations : defaults.reconciliations,
+      };
+    } else {
+      dbCache = emptyDB();
+    }
   } catch {
     dbCache = emptyDB();
   }
