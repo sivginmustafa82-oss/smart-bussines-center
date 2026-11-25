@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalendarRange, Store as StoreIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -75,9 +75,19 @@ export function useFilters() {
 
 export function FilterBar({ stores }: { stores: Store[] }) {
   const { storeId, setStoreId, preset, setPreset, custom, setCustom } = useFilters();
-  const [draftCustom, setDraftCustom] = useState(custom);
-  useEffect(() => setDraftCustom(custom), [custom]);
+  // Date input keystrokes stay in the native inputs. React only updates the shared
+  // filters once, when the user presses Apply, instead of rendering on every edit.
+  const fromRef = useRef<HTMLInputElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
   const validStore = storeId === "all" || stores.some((s) => s.id === storeId) ? storeId : "all";
+
+  function applyCustomRange() {
+    const from = fromRef.current?.value ?? "";
+    const to = toRef.current?.value ?? "";
+    if (!from || !to || from > to) return;
+    setCustom({ from, to });
+  }
+
   return (
     <div className="mb-6 flex flex-col gap-3 rounded-xl border bg-paper p-3 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="flex items-center gap-2">
@@ -117,21 +127,21 @@ export function FilterBar({ stores }: { stores: Store[] }) {
             type="date"
             aria-label="Başlangıç tarihi"
             className="bg-card"
-            value={draftCustom.from}
-            onChange={(e) => setDraftCustom({ ...draftCustom, from: e.target.value })}
+            defaultValue={custom.from}
+            ref={fromRef}
           />
           <span className="text-muted-foreground">–</span>
           <Input
             type="date"
             aria-label="Bitiş tarihi"
             className="bg-card"
-            value={draftCustom.to}
-            onChange={(e) => setDraftCustom({ ...draftCustom, to: e.target.value })}
+            defaultValue={custom.to}
+            ref={toRef}
           />
           <button
             type="button"
-            onClick={() => setCustom(draftCustom)}
-            disabled={!draftCustom.from || !draftCustom.to || draftCustom.from > draftCustom.to}
+            onClick={applyCustomRange}
+            disabled={!fromRef.current?.value || !toRef.current?.value || fromRef.current.value > toRef.current.value}
             className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Uygula
