@@ -18,6 +18,7 @@ import { Route as PanelKarlilikRouteImport } from './routes/_panel/karlilik'
 import { Route as PanelMagazaOzetiRouteImport } from './routes/_panel/magaza-ozeti'
 import { Route as PanelSiparislerRouteImport } from './routes/_panel/siparisler'
 import { Route as PanelUrunlerRouteImport } from './routes/_panel/urunler'
+import { Route as PanelYapayZekaVerileriRouteImport } from './routes/_panel/yapay-zeka-verileri'
 import { Route as PanelMagazalarIndexRouteImport } from './routes/_panel/magazalar.index'
 import { Route as PanelMagazalarStoreIdRouteImport } from './routes/_panel/magazalar.$storeId'
 import { Route as PanelRaporlarIndexRouteImport } from './routes/_panel/raporlar.index'
@@ -67,6 +68,11 @@ const PanelUrunlerRoute = PanelUrunlerRouteImport.update({
   path: '/urunler',
   getParentRoute: () => PanelRouteRoute,
 } as any)
+const PanelYapayZekaVerileriRoute = PanelYapayZekaVerileriRouteImport.update({
+  id: '/yapay-zeka-verileri',
+  path: '/yapay-zeka-verileri',
+  getParentRoute: () => PanelRouteRoute,
+} as any)
 const PanelMagazalarIndexRoute = PanelMagazalarIndexRouteImport.update({
   id: '/magazalar/',
   path: '/magazalar/',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
+  '/yapay-zeka-verileri': typeof PanelYapayZekaVerileriRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
   '/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/magazalar/': typeof PanelMagazalarIndexRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/siparisler': typeof PanelSiparislerRoute
   '/urunler': typeof PanelUrunlerRoute
+  '/yapay-zeka-verileri': typeof PanelYapayZekaVerileriRoute
   '/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
   '/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/magazalar': typeof PanelMagazalarIndexRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/_panel/magaza-ozeti': typeof PanelMagazaOzetiRoute
   '/_panel/siparisler': typeof PanelSiparislerRoute
   '/_panel/urunler': typeof PanelUrunlerRoute
+  '/_panel/yapay-zeka-verileri': typeof PanelYapayZekaVerileriRoute
   '/_panel/magazalar/$storeId': typeof PanelMagazalarStoreIdRoute
   '/_panel/raporlar/mutabakat': typeof PanelRaporlarMutabakatRoute
   '/_panel/magazalar/': typeof PanelMagazalarIndexRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/magaza-ozeti'
     | '/siparisler'
     | '/urunler'
+    | '/yapay-zeka-verileri'
     | '/magazalar/$storeId'
     | '/raporlar/mutabakat'
     | '/magazalar/'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/magaza-ozeti'
     | '/siparisler'
     | '/urunler'
+    | '/yapay-zeka-verileri'
     | '/magazalar/$storeId'
     | '/raporlar/mutabakat'
     | '/magazalar'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/_panel/magaza-ozeti'
     | '/_panel/siparisler'
     | '/_panel/urunler'
+    | '/_panel/yapay-zeka-verileri'
     | '/_panel/magazalar/$storeId'
     | '/_panel/raporlar/mutabakat'
     | '/_panel/magazalar/'
@@ -249,6 +261,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PanelUrunlerRouteImport
       parentRoute: typeof PanelRouteRoute
     }
+    '/_panel/yapay-zeka-verileri': {
+      id: '/_panel/yapay-zeka-verileri'
+      path: '/yapay-zeka-verileri'
+      fullPath: '/yapay-zeka-verileri'
+      preLoaderRoute: typeof PanelYapayZekaVerileriRouteImport
+      parentRoute: typeof PanelRouteRoute
+    }
     '/_panel/magazalar/': {
       id: '/_panel/magazalar/'
       path: '/magazalar'
@@ -287,6 +306,7 @@ interface PanelRouteRouteChildren {
   PanelMagazaOzetiRoute: typeof PanelMagazaOzetiRoute
   PanelSiparislerRoute: typeof PanelSiparislerRoute
   PanelUrunlerRoute: typeof PanelUrunlerRoute
+  PanelYapayZekaVerileriRoute: typeof PanelYapayZekaVerileriRoute
   PanelMagazalarStoreIdRoute: typeof PanelMagazalarStoreIdRoute
   PanelRaporlarMutabakatRoute: typeof PanelRaporlarMutabakatRoute
   PanelMagazalarIndexRoute: typeof PanelMagazalarIndexRoute
@@ -300,6 +320,7 @@ const PanelRouteRouteChildren: PanelRouteRouteChildren = {
   PanelMagazaOzetiRoute: PanelMagazaOzetiRoute,
   PanelSiparislerRoute: PanelSiparislerRoute,
   PanelUrunlerRoute: PanelUrunlerRoute,
+  PanelYapayZekaVerileriRoute: PanelYapayZekaVerileriRoute,
   PanelMagazalarStoreIdRoute: PanelMagazalarStoreIdRoute,
   PanelRaporlarMutabakatRoute: PanelRaporlarMutabakatRoute,
   PanelMagazalarIndexRoute: PanelMagazalarIndexRoute,

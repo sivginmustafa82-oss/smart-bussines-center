@@ -6,6 +6,7 @@ import {
   Package,
   Settings,
   ShoppingCart,
+  Sparkles,
   Store,
   Wallet,
 } from "lucide-react";
@@ -34,6 +35,7 @@ export const NAV_ITEMS = [
   { title: "Kârlılık", url: "/karlilik", icon: BarChart3 },
   { title: "Giderler", url: "/giderler", icon: Wallet },
   { title: "Raporlar", url: "/raporlar", icon: FileSpreadsheet },
+  { title: "Yapay Zekâ Verileri", url: "/yapay-zeka-verileri", icon: Sparkles },
   { title: "Ayarlar", url: "/ayarlar", icon: Settings },
 ] as const;
 

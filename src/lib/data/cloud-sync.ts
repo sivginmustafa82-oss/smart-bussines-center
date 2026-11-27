@@ -131,6 +131,7 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   const storeIdMap = new Map<string, string>();
   const productIdMap = new Map<string, string>();
   const variantByProduct = new Map<string, Row>();
+  const variantsByProduct = new Map<string, Row[]>();
   const latestCostByVariant = new Map<string, Row>();
 
   for (const row of storesRows) {
@@ -144,6 +145,9 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   for (const row of variantsRows) {
     const pid = str(row["product_id"]);
     if (!variantByProduct.has(pid)) variantByProduct.set(pid, row);
+    const list = variantsByProduct.get(pid) ?? [];
+    list.push(row);
+    variantsByProduct.set(pid, list);
   }
   for (const row of costsRows) {
     const vid = str(row["variant_id"]);
@@ -165,8 +169,26 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
   const products: Product[] = productsRows.map((row) => {
     const id = str(row["id"]);
     const storeId = str(row["store_id"]);
+    const allVariants = variantsByProduct.get(id) ?? [];
     const variant = variantByProduct.get(id);
-    const cost = variant ? latestCostByVariant.get(str(variant["id"])) : undefined;
+    const cost =
+      (variant ? latestCostByVariant.get(str(variant["id"])) : undefined) ??
+      allVariants.map((v) => latestCostByVariant.get(str(v["id"]))).find((c) => c != null);
+    const realVariants = allVariants
+      .filter((v) => str(v["id"]) !== id || Boolean(v["variant_name"]) || Boolean(v["external_variant_id"]))
+      .map((v) => ({
+        id: str(v["id"]),
+        barcode: str(v["barcode"]),
+        sku: str(v["sku"]),
+        name: str(v["variant_name"]),
+        salePrice: nullableNum(v["sale_price"]),
+        listPrice: nullableNum(v["list_price"]),
+        stock: Number(v["stock_quantity"] ?? 0),
+      }));
+    const externalProductId = row["external_product_id"] ? str(row["external_product_id"]) : undefined;
+    const category = row["category"] ? str(row["category"]) : undefined;
+    const brand = row["brand"] ? str(row["brand"]) : undefined;
+    const productUrl = row["product_url"] ? str(row["product_url"]) : undefined;
     return {
       id: productIdMap.get(id) ?? id,
       tenantId: session.tenantId,
@@ -180,6 +202,11 @@ export async function syncWorkspaceWithCloud(): Promise<CloudSyncResult> {
       verified: Boolean(row["verified"]),
       createdAt: str(row["created_at"]),
       updatedAt: str(row["updated_at"] ?? row["created_at"]),
+      ...(externalProductId ? { externalProductId } : {}),
+      ...(realVariants.length > 0 ? { variants: realVariants } : {}),
+      ...(category ? { category } : {}),
+      ...(brand ? { brand } : {}),
+      ...(productUrl ? { productUrl } : {}),
     };
   });
 

@@ -75,6 +75,10 @@ export interface Product {
   externalProductId?: string;
   /** Marketplace variants grouped under this main product. Absent for manual products. */
   variants?: ProductVariant[];
+  /** Optional marketplace catalog metadata populated from synced Trendyol products. */
+  category?: string;
+  brand?: string;
+  productUrl?: string;
 }
 
 /**
@@ -150,4 +154,54 @@ export interface ReconciliationEntry {
   note: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Daily advertising performance row (from Supabase `ad_daily_performance` when connected). */
+export interface AdDailyPerformance {
+  id: string;
+  storeId: string;
+  externalCampaignId: string | null;
+  campaignName: string | null;
+  date: string; // YYYY-MM-DD
+  spend: number;
+  revenue: number;
+  impressions: number;
+  clicks: number;
+  ordersCount: number;
+  currency: string;
+}
+
+/** Optional funnel telemetry row when marketplace analytics provides view/cart events. */
+export interface FunnelMetricRow {
+  storeId: string;
+  productId: string | null;
+  date: string; // YYYY-MM-DD
+  views: number;
+  addToCart: number;
+  orders: number;
+}
+
+/** Optional customer review row when marketplace review data is imported. */
+export interface CustomerReviewRow {
+  id: string;
+  storeId: string;
+  productId: string | null;
+  date: string; // YYYY-MM-DD or ISO timestamp
+  rating: number; // 1..5
+  comment: string;
+}
+
+/** User-entered manual competitor observation. Never fabricated. */
+export interface CompetitorEntry {
+  id: string;
+  tenantId: string;
+  storeId: string;
+  productId: string | null;
+  competitorName: string;
+  competitorProduct: string;
+  competitorPrice: number;
+  observedDate: string; // YYYY-MM-DD
+  note: string;
+  source: "manual";
+  createdAt: string;
 }

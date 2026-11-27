@@ -2,9 +2,12 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { CalendarRange, Store as StoreIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { todayISO } from "@/lib/format";
 import type { Filters } from "@/lib/domain/profitability";
 import type { Store } from "@/lib/domain/types";
+import {
+  addDays,
+  istanbulToday,
+} from "../../../supabase/functions/smart-business-api/trendyol-time";
 
 export type Preset = "all" | "this_month" | "last_month" | "last_90" | "this_year" | "custom";
 
@@ -17,10 +20,13 @@ export const PRESET_LABELS: Record<Preset, string> = {
   custom: "Özel aralık",
 };
 
-export function presetRange(p: Preset, custom: { from: string; to: string }): { from: string | null; to: string | null } {
-  const today = todayISO();
-  const [year, month, day] = today.split("-").map(Number);
-  const now = new Date(Date.UTC(year, month - 1, day));
+export function presetRange(
+  p: Preset,
+  custom: { from: string; to: string },
+  nowMs: number = Date.now(),
+): { from: string | null; to: string | null } {
+  const today = istanbulToday(nowMs);
+  const [year = 2026, month = 1] = today.split("-").map(Number);
   const asISO = (d: Date) => d.toISOString().slice(0, 10);
   switch (p) {
     case "all":
@@ -33,9 +39,7 @@ export function presetRange(p: Preset, custom: { from: string; to: string }): { 
         to: asISO(new Date(Date.UTC(year, month - 1, 0))),
       };
     case "last_90": {
-      const d = new Date(now);
-      d.setUTCDate(d.getUTCDate() - 89);
-      return { from: asISO(d), to: today };
+      return { from: addDays(today, -89), to: today };
     }
     case "this_year":
       return { from: `${year}-01-01`, to: today };
