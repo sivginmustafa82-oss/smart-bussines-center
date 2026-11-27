@@ -329,6 +329,7 @@ export type Database = {
       }
       order_records: {
         Row: {
+          approved_at: string | null
           commission_amount: number
           coupon_amount: number
           created_at: string
@@ -339,6 +340,7 @@ export type Database = {
           id: string
           note: string
           order_number: string
+          ordered_at: string | null
           organization_id: string
           product_id: string | null
           quantity: number
@@ -351,6 +353,7 @@ export type Database = {
           withholding_amount: number
         }
         Insert: {
+          approved_at?: string | null
           commission_amount?: number
           coupon_amount?: number
           created_at?: string
@@ -361,6 +364,7 @@ export type Database = {
           id?: string
           note?: string
           order_number: string
+          ordered_at?: string | null
           organization_id: string
           product_id?: string | null
           quantity: number
@@ -373,6 +377,7 @@ export type Database = {
           withholding_amount?: number
         }
         Update: {
+          approved_at?: string | null
           commission_amount?: number
           coupon_amount?: number
           created_at?: string
@@ -383,6 +388,7 @@ export type Database = {
           id?: string
           note?: string
           order_number?: string
+          ordered_at?: string | null
           organization_id?: string
           product_id?: string | null
           quantity?: number
